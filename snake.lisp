@@ -2,8 +2,8 @@
   (:use #:cl))
 
 (in-package #:snake-game)
-(ql:quickload :cl-opengl)
-(ql:quickload :cl-glut)
+(require :cl-opengl)
+(require :cl-glut)
 
 (defun clamp (x min max)
   (cond
@@ -87,34 +87,6 @@
     :accessor y
     :type single
     :initarg :y)))
-
-(defun render-bezier ()
-  (let* ((bezier-points (generate-bezier-points
-                        (make-instance 'vec2 :x 0.1 :y 0.1)
-                        (make-instance 'vec2 :x 0.8 :y 0.8)
-                        (make-instance 'vec2 :x 1.8 :y 0)))
-        (length (* (length bezier-points) (* 2 (cffi:foreign-type-size :float)))))
-    (gl:with-gl-array (bezier-line :float :count length)
-      (gl:bind-buffer :array-buffer (slot-value bezier-line 'pointer))
-      (gl:enable-vertex-attrib-array 0)
-      (gl:vertex-attrib-pointer 0 3 :float nil 0 0)
-      (gl:disable-vertex-attrib-array 0)
-      (gl:draw-arrays :line-strip 0 length)
-      (gl:bind-buffer :array-buffer 0))))
-  
-
-(defun generate-bezier-points (p1 p2 p3 &key (quality 100))
-  (loop for i from 0 to quality
-        for j = (- 1 (/ i quality))
-        collect (compute-bezier-point p1 p2 p3 j)))
-
-(defun compute-bezier-point (p1 p2 p3 i)
-  (make-instance 'vec2
-                 :x (compute-bezier-value (x p1) (x p2) (x p3) i)
-                 :y (compute-bezier-value (y p1) (y p2) (y p3) i)))
-
-(defun compute-bezier-value (p1 p2 p3 i)
-  (+ (* (* 2 (- 1 i)) (- p2 p1)) (* (* 2 i) (- p3 p2))))
 
 (defmethod move ((p player) x y)
   (setf (x p) (clamp (+ x (x p)) -250 250))
