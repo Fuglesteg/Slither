@@ -44,7 +44,9 @@
 (defun init ()
   (setf *shader-program* (make-instance 'shader-program 
                  :vertex-shader (make-instance 'vertex-shader :path #P"./vertex.glsl")
-                 :fragment-shader (make-instance 'fragment-shader :path #P"./circle.glsl")))
+                 :fragment-shader (make-instance 'fragment-shader :path #P"./circle.glsl")
+                 :uniforms (list
+                            (make-instance 'uniform :name "position"))))
   (setf *bg* (gen-quad)))
 
 (defvar *bg* nil)
@@ -105,6 +107,7 @@
         (micros::handle-requests connection t)))))
 
 (defun update ()
+  (sleep 0.01)
   (update-dt)
   (read-repl))
 
@@ -113,7 +116,6 @@
   (gl:use-program (id *shader-program*))
   (gl:bind-vertex-array *bg*)
   (%gl:draw-elements :triangles 6 :unsigned-int 0)
-  ;(gl:draw-arrays :triangles 6 0)
   (gl:bind-vertex-array 0)
   (gl:flush))
 
@@ -208,9 +210,12 @@
       (when (uniforms program)
         (mapcar
          (lambda (uniform)
-           (gl:get-uniform-location program-id (name uniform)))
+           (setf (id uniform) (gl:get-uniform-location program-id (name uniform))))
          (uniforms program)))
       (setf (id program) program-id))))
+
+(defmethod get-uniform ((program shader-program) (name string))
+  (find-if (lambda (uniform) (string= name (name uniform))) (uniforms program)))
 
 (defmethod glut:keyboard ((w game-window) key x y)
   (declare (ignore x y))
@@ -228,3 +233,11 @@
   (let ((time (get-time)))
     (setf *dt* (- time *last-time*)
           *last-time* time)))
+
+(defmethod glut:passive-motion ((w game-window) x y)
+  (%gl:uniform-2f (id (get-uniform *shader-program* "position"))
+                  (float (/ x (glut:get :screen-width)))
+                  (float (/ (+ 2000 (* y -1)) (glut:get :screen-height)))))
+
+(defun get-fps ()
+  (float (/ 1000 *dt*)))

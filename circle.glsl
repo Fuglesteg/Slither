@@ -1,28 +1,38 @@
 #version 330 core
 //uniform float radius;
-//uniform vec2 position;
+uniform vec2 position;
 out vec4 FragColor;
 
-void main()
-{
-    float smoothness = 0.01;
+float smin(float a, float b, float k) {
+  float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
+  return mix(b, a, h) - k*h*(1.0-h);
+}
+
+float smax(float a, float b, float k) {
+  return -smin(-a, -b, k);
+}
+
+float sdCircle(vec2 uv, float r, vec2 offset) {
+  float x = uv.x - offset.x;
+  float y = uv.y - offset.y;
+
+  return length(vec2(x, y)) - r;
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / vec2(2000, 2000);
     
-    vec4 color1 = vec4(1, 0.0, 0.8, 1.0);
-    vec2 position1 = vec2(2, 2);
-    float radius1 = 0.2;
-    vec2 uv1 = (gl_FragCoord.xy / vec2(600.0, 600.0)) - position1;
-    float d1 = length(uv1);
-    float t1 = smoothstep(radius1, radius1 + smoothness, 1.0 - d1);
-    vec4 circle1 = color1 * t1;
+    float d1 = sdCircle(uv, 0.2, position);
+    float d2 = sdCircle(uv, 0.2, vec2(1, 0.5));
     
-    vec4 color2 = vec4(1, 0.8, 0.8, 1.0);
-    vec2 position2 = vec2(3.8, 2);
-    float radius2 = 0.2;
-    vec2 uv2 = (gl_FragCoord.xy / vec2(600.0, 600.0)) - position2;
-    float d2 = length(uv2);
-    float t2 = smoothstep(radius2, radius2 + smoothness, 1.0 - d2);
-    vec4 circle2 = color2 * t2;
+    float result = smin(d1, d2, 0.8);
+    result = step(0., result);
     
-    FragColor = circle1 + circle2;
-    //FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+    vec3 color1 = vec3(0.8, 0.2, 0.8);
+    vec3 color2 = vec3(0.0, 0.5, 1);
+    vec3 mixedColor = mix(color1, color2, d1 - d2);
+    
+    vec3 colorBg = vec3(0, 0, 0);
+    
+    FragColor = vec4(mix(mixedColor, colorBg, result), 1.0);
 }
