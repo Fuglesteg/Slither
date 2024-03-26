@@ -5,7 +5,6 @@
 (require :cl-opengl)
 (require :cl-glut)
 (require :3d-math)
-(require :cffi)
 (require :static-vectors)
 
 (declaim (optimize (debug 3) (speed 0) (safety 3)))
@@ -57,10 +56,12 @@
         (ebo (gl:gen-buffer)))
     (gl:bind-vertex-array vao)
     (gl:bind-buffer :array-buffer vbo)
-    (%gl:buffer-data :array-buffer 
-                     (* 8 (cffi:foreign-type-size :float))
-                     (static-vectors:static-vector-pointer (get-gl-quad 0.0 0.0 2.0 2.0))
-                     :static-draw)
+    (let ((sv (get-gl-quad 0.0 0.0 2.0 2.0)))
+      (%gl:buffer-data :array-buffer 
+                       (* 8 (cffi:foreign-type-size :float))
+                       (static-vectors:static-vector-pointer sv)
+                       :static-draw)
+      (static-vectors:free-static-vector sv))
     (gl:bind-buffer :element-array-buffer ebo)
     (let ((sv (get-quad-indices-array)))
       (%gl:buffer-data :element-array-buffer 
