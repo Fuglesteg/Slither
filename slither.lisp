@@ -1,10 +1,11 @@
 (defpackage #:slither
-  (:use #:cl))
+  (:use #:cl)
+  (:local-nicknames (:math #:org.shirakumo.fraf.math)))
 
 (in-package #:slither)
 (require :cl-opengl)
 (require :cl-glut)
-(require :3d-math)
+(asdf:load-system :3d-math)
 (require :static-vectors)
 
 (declaim (optimize (debug 3) (speed 0) (safety 3)))
@@ -40,6 +41,8 @@
 
 (defvar *shader-program* nil)
 
+(defvar *bg* nil)
+
 (defun init ()
   (setf *shader-program* (make-instance 'shader-program 
                  :vertex-shader (make-instance 'vertex-shader :path #P"./vertex.glsl")
@@ -47,8 +50,6 @@
                  :uniforms (list
                             (make-instance 'uniform :name "position"))))
   (setf *bg* (gen-quad)))
-
-(defvar *bg* nil)
 
 (defun gen-quad ()
   (let ((vao (gl:gen-vertex-array))
@@ -101,16 +102,17 @@
        (progn ,@body)
      (continue () :report "Continue")))
 
+#+micros
 (defun read-repl ()
   (continuable
-    (let ((connection (or micros/swank-api:*emacs-connection* micros::default-connection)))
+    (let ((connection (or micros/swank-api:*emacs-connection* (micros::default-connection))))
       (when connection
         (micros::handle-requests connection t)))))
 
 (defun update ()
   (sleep 0.01)
   (update-dt)
-  (read-repl))
+  #+micros (read-repl))
 
 (defun render ()
   (gl:clear :color-buffer)
@@ -208,11 +210,11 @@
       (gl:attach-shader program-id (id fragment-shader))
       (gl:link-program program-id)
       ;; Init uniforms
-      (when (uniforms program)
+      #|(when (uniforms program)
         (mapcar
          (lambda (uniform)
            (setf (id uniform) (gl:get-uniform-location program-id (name uniform))))
-         (uniforms program)))
+         (uniforms program)))|#
       (setf (id program) program-id))))
 
 (defmethod get-uniform ((program shader-program) (name string))
