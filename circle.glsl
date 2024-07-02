@@ -12,23 +12,23 @@ struct Circle {
 //uniform Circle[] circles;
 
 Circle circles[] = Circle[](
-	Circle(vec2(1, 0.5), 0.2, vec3(0.8, 0.2, 0.8)),
-	Circle(vec2(0, 0), 0.2, vec3(0.0, 0.5, 1)));
+    Circle(vec2(1, 0.5), 0.2, vec3(0.8, 0.2, 0.8)),
+    Circle(vec2(0, 0), 0.2, vec3(0.0, 0.5, 1)));
 
 float smin(float a, float b, float k) {
-  float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
-  return mix(b, a, h) - k*h*(1.0-h);
+    float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
+    return mix(b, a, h) - k*h*(1.0-h);
 }
 
 float smax(float a, float b, float k) {
-  return -smin(-a, -b, k);
+    return -smin(-a, -b, k);
 }
 
 float sdCircle(vec2 uv, float r, vec2 offset) {
-  float x = uv.x - offset.x;
-  float y = uv.y - offset.y;
+    float x = uv.x - offset.x;
+    float y = uv.y - offset.y;
 
-  return length(vec2(x, y)) - r;
+    return length(vec2(x, y)) - r;
 }
 
 void main() {
@@ -36,17 +36,18 @@ void main() {
 
     circles[1].position = position;
     vec3 finalColor = vec3(0, 0, 0);
-    float lastDistance = 0;
+    float result = 0;
     float distances[circles.length()];
+    float lastDistance = 0;
 
     for (int i = 0; i < circles.length(); i++) {
-	float distance = sdCircle(uv, circles[i].radius, circles[i].position);
-	finalColor = mix(finalColor, circles[i].color, lastDistance - distance);
-	distances[i] = distance;
-	lastDistance = distance;
-    	float result = smin(lastDistance, distance, 0.8);
-    	result = step(0., result);
-        finalColor = mix(finalColor, vec3(0.0, 0.0, 0.0), result);
+        float distance = sdCircle(uv, circles[i].radius, circles[i].position);
+        finalColor = mix(finalColor, circles[i].color, lastDistance - distance);
+        distances[i] = distance;
+        lastDistance = distance;
+        result = smin(result, distance, 0.8);
     }
+    result = step(0., result);
+    finalColor = mix(finalColor, vec3(0.0, 0.0, 0.0), result);
     FragColor = vec4(finalColor, 1.0);
 }
