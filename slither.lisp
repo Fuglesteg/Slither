@@ -210,11 +210,11 @@
       (gl:attach-shader program-id (id fragment-shader))
       (gl:link-program program-id)
       ;; Init uniforms
-      #|(when (uniforms program)
+      (when (uniforms program)
         (mapcar
          (lambda (uniform)
            (setf (id uniform) (gl:get-uniform-location program-id (name uniform))))
-         (uniforms program)))|#
+         (uniforms program)))
       (setf (id program) program-id))))
 
 (defmethod get-uniform ((program shader-program) (name string))
@@ -238,9 +238,11 @@
           *last-time* time)))
 
 (defmethod glut:passive-motion ((w game-window) x y)
+  (let ((height (float (glut:get :screen-height)))
+        (width (float (glut:get :screen-width))))
   (%gl:uniform-2f (id (get-uniform *shader-program* "position"))
-                  (float (/ x (glut:get :screen-width)))
-                  (float (/ (+ 2000 (* y -1)) (glut:get :screen-height)))))
+                  (float (* 2 (/ x width)))
+                  (- 1.5 (float (* 1.5 (/ y height)))))))
 
 (defun get-fps ()
   (float (/ 1000 *dt*)))
