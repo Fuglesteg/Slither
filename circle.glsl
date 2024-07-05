@@ -12,9 +12,10 @@ struct Circle {
 //uniform Circle[] circles;
 
 Circle circles[] = Circle[](
-    Circle(vec2(1, 0.5), 0.2, vec3(0.8, 0.2, 0.8)),
+    Circle(vec2(1, 0.5), 0.3, vec3(0.8, 0.2, 0.8)),
     Circle(vec2(0, 0), 0.2, vec3(0.0, 0.5, 1)),
-    Circle(vec2(0.5, 0.7), 0.2, vec3(0.2, 0.2, 0.3)));
+    Circle(vec2(1.5, 1.3), 0.35, vec3(0.8, 0.5, 1)),
+    Circle(vec2(0.5, 0.7), 0.1, vec3(0.2, 0.2, 0.3)));
 
 float smin(float a, float b, float k) {
     float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
@@ -36,14 +37,22 @@ void main() {
     vec2 uv = gl_FragCoord.xy / vec2(2000, 2000);
 
     circles[1].position = position;
-    vec3 finalColor = circles[0].color;
     float lastDistance = sdCircle(uv, circles[0].radius, circles[0].position);
+    vec3 finalColor = circles[0].color;
     float result = lastDistance;
 
     for (int i = 1; i < circles.length(); i++) {
         float distance = sdCircle(uv, circles[i].radius, circles[i].position);
-        finalColor = mix(circles[i].color, finalColor, distance - lastDistance);
-        result = smin(result, distance, 0.2);
+        float lastResult = result;
+        result = smin(result, distance, circles[i].radius);
+        float steppedResult = step(0., result);
+
+        if (steppedResult < 1) {
+            finalColor = mix(circles[i].color, finalColor, distance - lastResult);
+        } else {
+            finalColor = circles[i].color;
+        }
+
         lastDistance = distance;
     }
 
