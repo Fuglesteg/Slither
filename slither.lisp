@@ -31,11 +31,21 @@
 (defclass fragment-shader (shader) ()
   (:default-initargs :shader-type :fragment-shader))
 
+(defun shader-compile-status (shader-id)
+  (let ((status (cffi:foreign-alloc :int)))
+    (%gl:get-shader-iv shader-id :compile-status status)
+    (let ((successfully-compiled (= 1 (cffi:mem-ref status :int))))
+      (cffi:foreign-free status)
+      successfully-compiled)))
+
 (defmethod initialize-instance :after ((shader shader) &key)
   (let ((shader-id (gl:create-shader (shader-type shader))))
     (gl:shader-source shader-id (uiop:read-file-string (path shader)))
     (gl:compile-shader shader-id)
-    (setf (id shader) shader-id)))
+    (let ((shader-successfully-compiled (shader-compile-status shader-id)))
+      (if (not shader-successfully-compiled)
+        (format t "~a:~%~a" (path shader) (gl:get-shader-info-log shader-id))
+        (setf (id shader) shader-id)))))
 
 (defvar *game-objects* '())
 
