@@ -3,10 +3,6 @@
   (:local-nicknames (:math #:org.shirakumo.fraf.math)))
 
 (in-package #:slither)
-(require :cl-opengl)
-(require :cl-glut)
-(asdf:load-system :3d-math)
-(require :static-vectors)
 
 (declaim (optimize (debug 3) (speed 0) (safety 3)))
 
@@ -58,8 +54,49 @@
                  :vertex-shader (make-instance 'vertex-shader :path #P"./vertex.glsl")
                  :fragment-shader (make-instance 'fragment-shader :path #P"./circle.glsl")
                  :uniforms (list
-                            (make-instance 'uniform :name "position"))))
-  (setf *bg* (gen-quad)))
+                            (make-instance 'uniform :name "position")
+                            (make-instance 'uniform :name "screenSize"))))
+  (setf *bg* (gen-quad))
+  (gl:use-program (id *shader-program*))
+  (%gl:uniform-2f (id (get-uniform *shader-program* "screenSize")) (screen-width) (screen-height))
+  (set-circles))
+
+(defun random-float (&optional (range 1) (precision 10))
+  (float (* (/ (random precision) precision) range)))
+
+(defun set-circles ()
+  (let ((circles (loop repeat 10 
+                       collect `(:position (,(random-float 2) ,(random-float 2))
+                                 :radius ,(random-float)
+                                 :color (,(random-float)
+                                         ,(random-float)
+                                         ,(random-float))))))
+    (loop for circle in circles
+          for i from 0
+          for position = (getf circle :position)
+          for radius = (getf circle :radius)
+          for color = (getf circle :color)
+          do (set-circle-position i position)
+          do (set-circle-radius i radius)
+          do (set-circle-color i color))))
+
+(defun set-circle-position (index position)
+  (destructuring-bind (x y) position
+    (%gl:uniform-2f (+ 2 (* index 3)) x y)))
+
+(defun set-circle-radius (index radius)
+  (%gl:uniform-1f (+ (+ 2 (* index 3)) 1) radius))
+
+(defun set-circle-color (index color)
+  (destructuring-bind (x y z) color
+    (%gl:uniform-3f (+ (+ 2 (* index 3)) 2) 
+                    x y z)))
+
+(defun screen-width ()
+  (float (glut:get :screen-width)))
+
+(defun screen-height ()
+  (float (glut:get :screen-height)))
 
 (defun gen-quad ()
   (let ((vao (gl:gen-vertex-array))
