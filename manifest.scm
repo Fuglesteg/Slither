@@ -1,7 +1,6 @@
 (use-modules (guix packages)
-             (gnu packages lisp))
-
-(load "/home/andy/code/lem-guix-packaging/package.scm")
+             (gnu packages lisp)
+             (fuglesteg packages lem))
 
 (concatenate-manifests
   (list

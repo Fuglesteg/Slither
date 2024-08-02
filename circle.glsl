@@ -45,7 +45,7 @@ void main() {
         float steppedResult = step(0., result);
 
         if (steppedResult < 1) {
-            finalColor = mix(circles[i].color, finalColor, distance - lastResult);
+            finalColor = mix(circles[i].color, finalColor, 1 - result);
         } else {
             finalColor = circles[i].color;
         }

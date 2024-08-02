@@ -1,9 +1,13 @@
 (defpackage #:slither
-  (:use #:cl #:org.shirakumo.fraf.math.vectors))
+  (:use #:cl #:org.shirakumo.fraf.math.vectors #:org.shirakumo.fraf.math.matrices))
 
 (in-package #:slither)
 
 (declaim (optimize (debug 3) (speed 0) (safety 3)))
+
+#+test (let ((model (mat3 1))
+      (view (nmtranslate (mat3 1.0) (vec2 0 -3))))
+  (m* view model (vec2 1 1)))
 
 (defclass shader ()
   ((path
