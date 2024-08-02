@@ -10,7 +10,7 @@ struct Circle {
     vec3 color;
 };
 
-layout(location = 2) uniform Circle circles[10];
+layout(location = 2) uniform Circle circles[20];
 
 float smin(float a, float b, float k) {
     float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);

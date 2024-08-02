@@ -1,6 +1,5 @@
 (defpackage #:slither
-  (:use #:cl)
-  (:local-nicknames (:math #:org.shirakumo.fraf.math)))
+  (:use #:cl #:org.shirakumo.fraf.math.vectors))
 
 (in-package #:slither)
 
@@ -61,36 +60,36 @@
   (%gl:uniform-2f (id (get-uniform *shader-program* "screenSize")) (screen-width) (screen-height))
   (set-circles))
 
+(defvar *circles* '())
+
 (defun random-float (&optional (range 1) (precision 10))
   (float (* (/ (random precision) precision) range)))
 
+(defun wrap-in-uniform (value uniform-location)
+  (make-instance 'uniform-wrapper 
+                 :value value
+                 :id uniform-location))
+
+(defun make-random-circle (uniform-location)
+  (make-instance 'circle 
+                 :location (wrap-in-uniform
+                            (vec2 (random-float 2)
+                                  (random-float 2))
+                            uniform-location)
+                 :rotation (random 360)
+                 :radius (wrap-in-uniform
+                          (/ (random-float) 2)
+                          (+ uniform-location 1))
+                 :color (wrap-in-uniform
+                         (random-color)
+                         (+ uniform-location 2))))
+
 (defun set-circles ()
-  (let ((circles (loop repeat 10 
-                       collect `(:position (,(random-float 2) ,(random-float 2))
-                                 :radius ,(random-float)
-                                 :color (,(random-float)
-                                         ,(random-float)
-                                         ,(random-float))))))
-    (loop for circle in circles
-          for i from 0
-          for position = (getf circle :position)
-          for radius = (getf circle :radius)
-          for color = (getf circle :color)
-          do (set-circle-position i position)
-          do (set-circle-radius i radius)
-          do (set-circle-color i color))))
-
-(defun set-circle-position (index position)
-  (destructuring-bind (x y) position
-    (%gl:uniform-2f (+ 2 (* index 3)) x y)))
-
-(defun set-circle-radius (index radius)
-  (%gl:uniform-1f (+ (+ 2 (* index 3)) 1) radius))
-
-(defun set-circle-color (index color)
-  (destructuring-bind (x y z) color
-    (%gl:uniform-3f (+ (+ 2 (* index 3)) 2) 
-                    x y z)))
+  (let* ((circles-uniform-location 2)
+        (circles (loop repeat 20
+                       for i from circles-uniform-location by 3
+                       collect (make-random-circle i))))
+    (setf *circles* circles)))
 
 (defun screen-width ()
   (float (glut:get :screen-width)))
@@ -159,6 +158,8 @@
 (defun update ()
   (sleep 0.01)
   (update-dt)
+  (loop for circle in *circles*
+        do (tick circle))
   #+micros (read-repl))
 
 (defun render ()
@@ -174,10 +175,6 @@
    :mode '(:single :rgb :multisample) :title "Snake game"))
 
 (defparameter *window* (make-instance 'game-window))
-
-(defun start-render-thread ()
-  (sb-thread:make-thread (lambda ()
-                           (glut:display-window (make-instance 'game-window)))))
 
 (defun start-game ()
   (glut:display-window (make-instance 'game-window)))
@@ -206,19 +203,94 @@
   (update)
   (render))
 
-(defclass game-object (vector2)
+(defclass transform ()
+  ((location
+    :initform (make-instance 'vec2)
+    :accessor location
+    :initarg :location)
+   (rotation
+    :initform 0
+    :accessor rotation
+    :initarg :rotation)))
+
+(defclass game-object (transform)
    ((color
-    :initform (make-instance 'vector4)
+    :initform (make-instance 'vec4)
     :initarg :color
-    :type vector4
     :accessor color)))
 
 (defclass circle (game-object)
   ((radius
     :initform 0.0
     :initarg :radius
-    :type float
     :accessor radius)))
+
+(defun rotation->vec2 (rotation)
+  (vscale (vec2 (cos rotation)
+                (sin rotation))
+          1))
+
+(defun random-point-in-bounds ()
+  (vec2 (random-float 2) (random-float 2)))
+
+(defun randomly-negate (number)
+  (case (random 2)
+    (0 (- number))
+    (1 number)))
+
+(defun radians->degrees (radians)
+  (* radians (/ 180 pi)))
+
+(defmethod angle-towards ((from vec2) (to vec2))
+  (let ((direction (vscale (v- to from) 1)))
+    (radians->degrees (atan (vx direction) (vy direction)))))
+
+(defun random-point-outside-bounds (&optional (distance 2))
+  (vec2 (randomly-negate (+ distance (random-float distance)))
+        (randomly-negate (+ distance (random-float distance)))))
+
+(defun random-element (list)
+  (nth (random (length list)) list))
+
+(defun random-color ()
+  (random-element (list (vec3 0.3 0.0 0.5)
+                        (vec3 0.0 0.4 0.2)
+                        (vec3 0.5 0.5 0.3)
+                        (vec3 0.1 0.1 0.2)
+                        (vec3 0.7 0.4 0.5)
+                        (vec3 0.1 0.2 0.0)
+                        (vec3 0.5 0.0 0.2)
+                        (vec3 0.0 0.6 0.1)
+                        (vec3 0.2 0.4 0.0)
+                        (vec3 0.5 0.1 0.2)
+                        (vec3 0.0 0.3 0.8))))
+
+(defmethod tick ((circle circle))
+  (with-slots (location rotation) circle
+    (if (out-of-bounds-p circle :forgiveness 2)
+        (let ((point-outside (random-point-outside-bounds))
+              (point-inside (random-point-in-bounds)))
+          (setf (value (location circle)) point-outside
+                (rotation circle) (angle-towards point-outside point-inside)))
+        (let ((direction (rotation->vec2 rotation)))
+          (setf (value location) (v+ (value location) (v/ direction 100)))))))
+
+(loop repeat 20 collect (let ((point (random-point-outside-bounds)))
+                          `(,point ,(out-of-bounds-p point :forgiveness 5))))
+
+(defgeneric out-of-bounds-p (circle &key forgiveness))
+
+(defmethod out-of-bounds-p ((circle circle) &key (forgiveness 0))
+  (let ((location (value (location circle)))
+        (radius (value (radius circle))))
+    (out-of-bounds-p location :forgiveness (+ forgiveness radius))))
+
+(defmethod out-of-bounds-p ((point vec2) &key (forgiveness 0))
+  (with-accessors ((x vx) (y vy)) point
+     (or (< (+ x forgiveness) 0)
+         (> (- x forgiveness) 2)
+         (< (+ y forgiveness) 0)
+         (> (- y forgiveness) 2))))
 
 (defclass uniform () 
   ((id
@@ -230,6 +302,29 @@
     :type string
     :accessor name
     :initarg :name)))
+
+(defmethod (setf uniform-value) ((value float) (uniform uniform))
+  (%gl:uniform-1f (id uniform) value))
+
+(defmethod (setf uniform-value) ((value vec2) (uniform uniform))
+  (with-accessors ((x vx) (y vy)) value
+    (%gl:uniform-2f (id uniform) x y)))
+
+(defmethod (setf uniform-value) ((value vec3) (uniform uniform))
+  (with-accessors ((x vx) (y vy) (z vz)) value
+    (%gl:uniform-3f (id uniform) x y z)))
+
+(defclass uniform-wrapper (uniform)
+  ((value
+    :reader value
+    :initarg :value)))
+
+(defmethod initialize-instance :after ((uniform-wrapper uniform-wrapper) &key)
+  (setf (uniform-value uniform-wrapper) (value uniform-wrapper)))
+
+(defmethod (setf value) (value (uniform-wrapper uniform-wrapper))
+  (setf (uniform-value uniform-wrapper) value)
+  (setf (slot-value uniform-wrapper 'value) value))
 
 (defclass shader-program ()
   ((id
@@ -284,9 +379,9 @@
     (setf *dt* (- time *last-time*)
           *last-time* time)))
 
-(defmethod glut:passive-motion ((w game-window) x y)
-  (let ((height (float (glut:get :screen-height)))
-        (width (float (glut:get :screen-width))))
+(defmethod glut:passive-motion ((window game-window) x y)
+  (let ((height (float (screen-height)))
+        (width (float (screen-width))))
   (%gl:uniform-2f (id (get-uniform *shader-program* "position"))
                   (float (* 2 (/ x width)))
                   (- 1.5 (float (* 1.5 (/ y height)))))))
