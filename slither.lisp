@@ -5,10 +5,6 @@
 
 (declaim (optimize (debug 3) (speed 0) (safety 3)))
 
-#+test (let ((model (mat3 1))
-      (view (nmtranslate (mat3 1.0) (vec2 0 -3))))
-  (m* view model (vec2 1 1)))
-
 (defclass shader ()
   ((path
     :initarg :path
@@ -30,7 +26,7 @@
 (defclass fragment-shader (shader) ()
   (:default-initargs :shader-type :fragment-shader))
 
-(defun shader-compile-status (shader-id)
+(defun shader-compiled-successfully-p (shader-id)
   (let ((status (cffi:foreign-alloc :int)))
     (%gl:get-shader-iv shader-id :compile-status status)
     (let ((successfully-compiled (= 1 (cffi:mem-ref status :int))))
@@ -41,7 +37,7 @@
   (let ((shader-id (gl:create-shader (shader-type shader))))
     (gl:shader-source shader-id (uiop:read-file-string (path shader)))
     (gl:compile-shader shader-id)
-    (let ((shader-successfully-compiled (shader-compile-status shader-id)))
+    (let ((shader-successfully-compiled (shader-compiled-successfully-p shader-id)))
       (if (not shader-successfully-compiled)
         (format t "~a:~%~a" (path shader) (gl:get-shader-info-log shader-id))
         (setf (id shader) shader-id)))))
@@ -82,7 +78,7 @@
                             uniform-location)
                  :rotation (random 360)
                  :radius (wrap-in-uniform
-                          (/ (random-float) 2)
+                          (/ (- 1.1 (random-float)) 2)
                           (+ uniform-location 1))
                  :color (wrap-in-uniform
                          (random-color)
@@ -257,21 +253,11 @@
   (nth (random (length list)) list))
 
 (defun random-color ()
-  (random-element (list (vec3 0.3 0.0 0.5)
-                        (vec3 0.0 0.4 0.2)
-                        (vec3 0.5 0.5 0.3)
-                        (vec3 0.1 0.1 0.2)
-                        (vec3 0.7 0.4 0.5)
-                        (vec3 0.1 0.2 0.0)
-                        (vec3 0.5 0.0 0.2)
-                        (vec3 0.0 0.6 0.1)
-                        (vec3 0.2 0.4 0.0)
-                        (vec3 0.5 0.1 0.2)
-                        (vec3 0.0 0.3 0.8))))
+  (vec3 (random-float) (random-float) (random-float)))
 
 (defmethod tick ((circle circle))
-  (with-slots (location rotation) circle
-    (if (out-of-bounds-p circle :forgiveness 2)
+  (with-slots (location rotation radius) circle
+    (if (out-of-bounds-p circle :forgiveness (+ 2 (value radius)))
         (let ((point-outside (random-point-outside-bounds))
               (point-inside (random-point-in-bounds)))
           (setf (value (location circle)) point-outside

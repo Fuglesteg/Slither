@@ -12,13 +12,13 @@ struct Circle {
 
 layout(location = 2) uniform Circle circles[20];
 
-float smin(float a, float b, float k) {
+float smoothMin(float a, float b, float k) {
     float h = clamp(0.5+0.5*(b-a)/k, 0.0, 1.0);
     return mix(b, a, h) - k*h*(1.0-h);
 }
 
 float smax(float a, float b, float k) {
-    return -smin(-a, -b, k);
+    return -smoothMin(-a, -b, k);
 }
 
 float sdCircle(vec2 uv, float r, vec2 offset) {
@@ -30,30 +30,21 @@ float sdCircle(vec2 uv, float r, vec2 offset) {
 
 void main() {
     vec2 uv = gl_FragCoord.xy / (min(screenSize.x, screenSize.y) / 2);
+    //vec2 uv = gl_FragCoord.xy / (screenSize.xy / 4);
 
-    float lastDistance = sdCircle(uv, circles[0].radius, circles[0].position);
-    vec3 finalColor = circles[0].color;
-    float result = lastDistance;
+    vec3 finalColor = vec3(0.0, 0.0, 0.0);
+    float minimumDistance = 2000.0;
 
-    for (int i = 1; i < circles.length(); i++) {
-    	if (circles[i].radius <= 0) {
-		continue;
-	}
-        float distance = sdCircle(uv, circles[i].radius, circles[i].position);
-        float lastResult = result;
-        result = smin(result, distance, circles[i].radius);
-        float steppedResult = step(0., result);
+    for (int i = 0; i < circles.length(); i++) {
+        Circle circle = circles[i];
+        float distance = sdCircle(uv, circle.radius, circle.position);
+        minimumDistance = smoothMin(minimumDistance, distance, circle.radius);
 
-        if (steppedResult < 1) {
-            finalColor = mix(circles[i].color, finalColor, 1 - result);
-        } else {
-            finalColor = circles[i].color;
-        }
-
-        lastDistance = distance;
+        float t = smoothstep(0.0, 1.0, distance + circle.radius / 2);
+        finalColor = mix(circle.color, finalColor, t);
     }
 
-    result = step(0., result);
-    finalColor = mix(finalColor, vec3(0.0, 0.0, 0.0), result);
+    //finalColor = mix(finalColor, vec3(0.0, 0.0, 0.0), smoothstep(-0.01, 0.01, minimumDistance));
+    finalColor = mix(finalColor, vec3(0.0, 0.0, 0.0), step(0.0, minimumDistance));
     FragColor = vec4(finalColor, 1.0);
 }
