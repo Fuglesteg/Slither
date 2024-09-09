@@ -2,6 +2,7 @@
 
 uniform vec2 position;
 uniform vec2 screenSize;
+uniform float zoom = 1.0;
 out vec4 FragColor;
 
 struct Circle {
@@ -40,7 +41,11 @@ void main() {
         float distance = sdCircle(uv, circle.radius, circle.position);
         minimumDistance = smoothMin(minimumDistance, distance, circle.radius);
 
-        float t = smoothstep(0.0, 1.0, distance + circle.radius / 2);
+        //float t = smoothstep(0.0, 1.0, distance * mix(0.0, 1.0, circle.radius));
+        //float t = smoothstep(0.0, 1.0, distance - circle.radius);
+        float t = smoothstep(0.0, 1.0, (distance + circle.radius) / zoom);
+        //float t = smoothstep(0.0, 1.0, distance + circle.radius);
+
         finalColor = mix(circle.color, finalColor, t);
     }
 

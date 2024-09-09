@@ -54,7 +54,8 @@
                  :fragment-shader (make-instance 'fragment-shader :path #P"./circle.glsl")
                  :uniforms (list
                             (make-instance 'uniform :name "position")
-                            (make-instance 'uniform :name "screenSize"))))
+                            (make-instance 'uniform :name "screenSize")
+                            (make-instance 'uniform :name "zoom"))))
   (setf *bg* (gen-quad))
   (gl:use-program (id *shader-program*))
   (%gl:uniform-2f (id (get-uniform *shader-program* "screenSize")) (screen-width) (screen-height))
@@ -65,8 +66,8 @@
 (defun random-float (&optional (range 1) (precision 10))
   (float (* (/ (random precision) precision) range)))
 
-(defun wrap-in-uniform (value uniform-location)
-  (make-instance 'uniform-wrapper 
+(defun wrap-in-uniform (value uniform-location &key (type 'uniform-wrapper))
+  (make-instance type
                  :value value
                  :id uniform-location))
 
@@ -78,8 +79,9 @@
                             uniform-location)
                  :rotation (random 360)
                  :radius (wrap-in-uniform
-                          (/ (- 1.1 (random-float)) 2)
-                          (+ uniform-location 1))
+                          (/ (- 1.2 (random-float)) 2)
+                          (+ uniform-location 1)
+                          :type 'radius)
                  :color (wrap-in-uniform
                          (random-color)
                          (+ uniform-location 2))))
@@ -193,6 +195,10 @@
 
 (defmethod glut:display-window :before ((w game-window))
   (init)
+  (setf *zoom* (make-instance 'uniform-wrapper 
+                              :value 0.1
+                              :name "zoom"
+                              :id (id (get-uniform *shader-program* "zoom"))))
   (gl:clear-color 0 0 0 0)
   (gl:ortho 0 1 0 1 -1 1))
 
@@ -222,8 +228,31 @@
 (defclass circle (game-object)
   ((radius
     :initform 0.0
-    :initarg :radius
-    :accessor radius)))
+    :initarg :radius)))
+
+(defmethod location ((circle circle))
+  (value (slot-value circle 'location)))
+
+(defmethod (setf location) ((location vec2) (circle circle))
+  (setf (slot-value (slot-value circle 'location) 'value) location))
+
+(defmethod (setf location) :after ((location vec2) (circle circle))
+  (setf (uniform-value (slot-value circle 'location))
+        (m* (nmtranslate
+             (nmscale (meye 3) (vec2 (value *zoom*)))
+             *camera-position*)
+            *model-matrix*
+            location)))
+
+(defmethod radius ((circle circle))
+  (value (slot-value circle 'radius)))
+
+(defmethod (setf radius) ((radius float) (circle circle))
+  (setf (slot-value (slot-value circle 'radius) 'value) radius))
+
+(defmethod (setf radius) :after ((radius float) (circle circle))
+  (setf (uniform-value (slot-value circle 'radius))
+        (* radius (value *zoom*))))
 
 (defun rotation->vec2 (rotation)
   (vscale (vec2 (cos rotation)
@@ -256,27 +285,25 @@
   (vec3 (random-float) (random-float) (random-float)))
 
 (defmethod tick ((circle circle))
-  (with-slots (location rotation radius) circle
+  (with-slots (rotation radius) circle
     (if (out-of-bounds-p circle :forgiveness (+ 2 (value radius)))
         (let ((point-outside (random-point-outside-bounds))
               (point-inside (random-point-in-bounds)))
-          (setf (value (location circle)) point-outside
+          (setf (location circle) point-outside
                 (rotation circle) (angle-towards point-outside point-inside)))
         (let ((direction (rotation->vec2 rotation)))
-          (setf (value location) (v+ (value location) (v/ direction 100)))))))
-
-(loop repeat 20 collect (let ((point (random-point-outside-bounds)))
-                          `(,point ,(out-of-bounds-p point :forgiveness 5))))
+          (setf (location circle) (v+ (location circle) (v/ direction 100)))))))
 
 (defgeneric out-of-bounds-p (circle &key forgiveness))
 
 (defmethod out-of-bounds-p ((circle circle) &key (forgiveness 0))
-  (let ((location (value (location circle)))
-        (radius (value (radius circle))))
+  (let ((location (location circle))
+        (radius
+          (radius circle)))
     (out-of-bounds-p location :forgiveness (+ forgiveness radius))))
 
 (defmethod out-of-bounds-p ((point vec2) &key (forgiveness 0))
-  (with-accessors ((x vx) (y vy)) point
+  (with-vec (x y) point
      (or (< (+ x forgiveness) 0)
          (> (- x forgiveness) 2)
          (< (+ y forgiveness) 0)
@@ -293,28 +320,48 @@
     :accessor name
     :initarg :name)))
 
+(defvar *model-matrix* (meye 3))
+(defvar *camera-position* (vec2 1.0))
+(defvar *view-matrix* (nmtranslate (nmscale (meye 3) (vec2 0.5 0.5)) *camera-position*))
+(defvar *zoom* nil)
+
+(defmethod (setf uniform-value) :after ((value float) (uniform (eql *zoom*)))
+  (dolist (circle *circles*)
+    (uniform-sync (slot-value circle 'radius))))
+
 (defmethod (setf uniform-value) ((value float) (uniform uniform))
   (%gl:uniform-1f (id uniform) value))
 
-(defmethod (setf uniform-value) ((value vec2) (uniform uniform))
-  (with-accessors ((x vx) (y vy)) value
+(defmethod (setf uniform-value) ((vec vec2) (uniform uniform))
+  (with-vec (x y) vec
     (%gl:uniform-2f (id uniform) x y)))
 
-(defmethod (setf uniform-value) ((value vec3) (uniform uniform))
-  (with-accessors ((x vx) (y vy) (z vz)) value
-    (%gl:uniform-3f (id uniform) x y z)))
+(defmethod (setf uniform-value) ((vec vec3) (uniform uniform))
+  (with-vec (x y z) vec
+    (%gl:uniform-3f (id uniform) x y z))) 
 
 (defclass uniform-wrapper (uniform)
   ((value
     :reader value
     :initarg :value)))
 
-(defmethod initialize-instance :after ((uniform-wrapper uniform-wrapper) &key)
+(defgeneric uniform-sync (uniform-wrapper))
+(defmethod uniform-sync ((uniform-wrapper uniform-wrapper))
   (setf (uniform-value uniform-wrapper) (value uniform-wrapper)))
 
+(defclass radius (uniform-wrapper) ())
+
+(defmethod uniform-sync ((radius radius))
+  (setf (uniform-value radius) (* (value radius) (value *zoom*))))
+
+(defmethod initialize-instance :after ((uniform-wrapper uniform-wrapper) &key)
+  (uniform-sync uniform-wrapper))
+
 (defmethod (setf value) (value (uniform-wrapper uniform-wrapper))
-  (setf (uniform-value uniform-wrapper) value)
   (setf (slot-value uniform-wrapper 'value) value))
+
+(defmethod (setf value) :after (value (uniform-wrapper uniform-wrapper))
+  (uniform-sync uniform-wrapper))
 
 (defclass shader-program ()
   ((id
@@ -356,6 +403,12 @@
   (declare (ignore x y))
   (case key
     (#\i (init))
+    (#\w (decf (vy *camera-position*) 0.1))
+    (#\s (incf (vy *camera-position*) 0.1))
+    (#\d (decf (vx *camera-position*) 0.1))
+    (#\a (incf (vx *camera-position*) 0.1))
+    (#\+ (setf (value *zoom*) (+ (value *zoom*) 0.1)))
+    (#\- (setf (value *zoom*) (- (value *zoom*) 0.1)))
     (#\Esc (glut:destroy-current-window))))
 
 (defvar *last-time* 0)
