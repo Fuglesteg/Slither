@@ -1,6 +1,7 @@
 (use-modules (guix packages)
              (guix build-system asdf)
              (gnu packages lisp-xyz)
+             (fuglesteg packages lisp)
              (guix gexp)
              ((guix licenses) #:prefix licenses:))
 
@@ -13,7 +14,7 @@
    (build-system asdf-build-system/sbcl)
    (inputs (list
             sbcl-3d-math
-            sbcl-cl-opengl
+            sbcl-glfw
             sbcl-static-vectors))
    (synopsis "") (description "") (home-page "") (license licenses:gpl3+)))
 

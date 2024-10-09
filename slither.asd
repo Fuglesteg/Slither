@@ -5,6 +5,6 @@
   :version "0.0.1"
   :depends-on (#:cl-opengl
                #:3d-math
-               #:cl-glut
+               #:org.shirakumo.fraf.glfw
                #:static-vectors)
   :components ((:file "slither")))

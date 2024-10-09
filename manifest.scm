@@ -1,6 +1,6 @@
 (use-modules (guix packages)
              (gnu packages lisp)
-             (fuglesteg packages lem))
+             (gnu packages text-editors))
 
 (concatenate-manifests
   (list
