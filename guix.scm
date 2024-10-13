@@ -7,15 +7,19 @@
 
 
 (define slither
-  (package 
+  (package
    (name "slither")
-   (version "a0.0.1")
-   (source (local-file "./" #:recursive? #t))
+   (version "0.0.2")
+   (source (local-file (dirname (current-filename)) #:recursive? #t))
    (build-system asdf-build-system/sbcl)
    (inputs (list
+            sbcl-cl-opengl
             sbcl-3d-math
             sbcl-glfw
-            sbcl-static-vectors))
+            sbcl-static-vectors
+            sbcl-pngload
+            sbcl-alexandria
+            sbcl-serapeum))
    (synopsis "") (description "") (home-page "") (license licenses:gpl3+)))
 
 slither

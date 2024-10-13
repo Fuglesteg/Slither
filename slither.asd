@@ -2,9 +2,21 @@
   :author "Andreas Fuglesteg Dale <andreasfdale@gmail.com>"
   :maintainer "Andreas Fuglesteg Dale <andreasfdale@gmail.com>"
   :license "GPL3"
-  :version "0.0.1"
+  :version "0.0.2"
   :depends-on (#:cl-opengl
                #:3d-math
-               #:org.shirakumo.fraf.glfw
+               #:glfw
                #:static-vectors)
-  :components ((:file "slither")))
+  :serial t
+  :components ((:file "utils")
+               (:module "render"
+                :serial t
+                :components
+                ((:file "uniform")
+                 (:file "texture")
+                 (:file "shader")
+                 (:file "shader-program")
+                 (:file "render")))
+               (:file "input")
+               (:file "window")
+               (:file "slither")))

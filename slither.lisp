@@ -2,50 +2,68 @@
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
-        #:slither/shaders
         #:slither/render
-        #:sliter/window
+        #:slither/window
         #:slither/input)
   (:export :start-game
            :define-game-object))
 
 (in-package #:slither)
 
-(defvar *game-objects* '())
-
-(defvar *shader-program* nil)
-
-(defun init ()
-  (setf *shader-program* (make-instance 'shader-program 
-                 :vertex-shader (make-instance 'vertex-shader :path #P"./vertex.glsl")
-                 :fragment-shader (make-instance 'fragment-shader :path #P"./circle.glsl")
-                 :uniforms (list
-                            (make-instance 'uniform :name "position")
-                            (make-instance 'uniform :name "screenSize")
-                            (make-instance 'uniform :name "zoom"))))
-  (setf *bg* (gen-quad))
-  (gl:use-program (id *shader-program*))
-  (%gl:uniform-2f (id (get-uniform *shader-program* "screenSize")) (screen-width) (screen-height))
-  (set-circles))
-
-(defun random-float (&optional (range 1) (precision 10))
-  (float (* (/ (random precision) precision) range)))
-
-(defun update ()
-  (update-dt)
-  (loop for circle in *circles*
-        do (tick circle)))
-
-(defun render ()
-  (gl:clear :color-buffer)
-  (gl:use-program (id *shader-program*))
-  (gl:bind-vertex-array *bg*)
-  (%gl:draw-elements :triangles 6 :unsigned-int 0)
-  (gl:bind-vertex-array 0)
-  (gl:flush))
+(defvar *entities* '())
 
 (defun start-game ()
-  (open-window))
+  (with-game-loop 
+    (update-entities) 
+    (render-entities)))
+
+(defmacro defentity (name slots &body sections)
+  `(progn
+     ,@(loop for (keyword entity-symbol . forms) in sections
+             with renderer = nil
+             when (eql keyword 'tick)
+             collect `(defmethod tick ((,entity-symbol ,name))
+                        ,@forms) into methods
+             when (eql keyword 'start)
+             collect `(defmethod start ((,entity-symbol ,name))
+                        ,@forms) into methods
+             when (eql keyword 'behaviors)
+             collect (cons entity-symbol forms) into behaviors
+             when (eql keyword 'renderer)
+             do (setf renderer entity-symbol)
+             finally (return
+                `((defclass ,name '(entity)
+                   (,@slots)
+                    (:default-initargs
+                    :behaviors ,behaviors
+                    :renderer ,(if (symbolp renderer)
+                                   `(make-instance ,renderer)
+                                   renderer)))
+                  ,@methods)))))
+
+(defentity player
+  ((speed
+    :initform (vec2 0.0 0.0)))
+  (renderer quad)
+  (tick player
+        (with-slots (location speed) player
+          (let ((speed-up-vector 
+                  (vec2 (+ (if (key-held-p #\d) 1.0 0.0)
+                           (if (key-held-p #\a) -1.0 0.0))
+                        (+ (if (key-held-p #\w) 1.0 0.0)
+                           (if (key-held-p #\s) -1.0 0.0)))))
+            (setf speed (v+ speed speed-up-vector))
+            (setf location (v+ location speed))))))
+
+(defun update-entities ()
+  (loop for entity in *entities*
+        do (tick entity)))
+
+(defun render-entities ()
+  (gl:clear :color-buffer)
+  (loop for entity in *entities*
+        do (render entity))
+  (gl:flush))
 
 (defclass transform ()
   ((location
@@ -57,54 +75,20 @@
     :accessor rotation
     :initarg :rotation)))
 
-(defclass game-object (transform)
-   ((color
-    :initform (make-instance 'vec4)
-    :initarg :color
-    :accessor color)))
+(defclass entity (transform) 
+  ((renderer
+    :initarg :renderer)
+   (behaviors
+    :accessor behaviors
+    :initarg :behaviors)))
 
-(defun rotation->vec2 (rotation)
-  (vscale (vec2 (cos rotation)
-                (sin rotation))
-          1))
-
-(defun randomly-negate (number)
-  (case (random 2)
-    (0 (- number))
-    (1 number)))
-
-(defun radians->degrees (radians)
-  (* radians (/ 180 pi)))
-
-(defmethod angle-towards ((from vec2) (to vec2))
-  (let ((direction (vscale (v- to from) 1)))
-    (radians->degrees (atan (vx direction) (vy direction)))))
-
-(defun random-point-outside-bounds (&optional (distance 2))
-  (vec2 (randomly-negate (+ distance (random-float distance)))
-        (randomly-negate (+ distance (random-float distance)))))
-
-(defun random-element (list)
-  (nth (random (length list)) list))
-
-(defun random-color ()
-  (vec3 (random-float) (random-float) (random-float)))
+(defgeneric tick (entity))
+(defgeneric start (entity))
+(defmethod render ((entity entity))
+  (with-slots (renderer) entity
+    (when renderer 
+      (render renderer))))
 
 (defvar *model-matrix* (meye 3))
 (defvar *camera-position* (vec2 1.0))
 (defvar *view-matrix* (nmtranslate (nmscale (meye 3) (vec2 0.5 0.5)) *camera-position*))
-(defvar *zoom* nil)
-
-(defvar *last-time* 0)
-(defvar *dt* 0)
-
-(defun get-time ()
-  (glut:get :elapsed-time))
-
-(defun update-dt ()
-  (let ((time (get-time)))
-    (setf *dt* (- time *last-time*)
-          *last-time* time)))
-
-(defun get-fps ()
-  (float (/ 1000 *dt*)))
