@@ -1,13 +1,16 @@
 (defpackage #:slither/window
   (:use #:cl 
         #:slither/utils)
-  (:import-from #:slither/input
-                :key-pressed
-                :key-released
-                :set-mouse-position)
+  (:import-from :slither/input
+                #:key-pressed
+                #:key-released
+                #:set-mouse-position)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
-  (:export :with-game-loop
-           :frame))
+  (:export #:frame
+           #:*dt*
+           #:fps
+           #:with-event-loop
+           #:with-window))
 
 (in-package #:slither/window)
 
@@ -16,13 +19,16 @@
    :width 250 :height 250
    :title "Slither"))
 
-(defmethod mouse-moved ((window game-window) x y)
+(defmethod glfw:mouse-moved ((window game-window) x y)
   (set-mouse-position x y))
 
-(defmethod key-changed ((window game-window) key action)
+(defmethod glfw:key-changed ((window game-window) key scan-code action modifiers)
   (case action
     (:press (key-pressed key (frame)))
     (:release (key-released key))))
+
+(defmethod glfw:window-resized ((window game-window) width height)
+  (gl:viewport 0 0 width height))
 
 (defvar *dt* 0)
 (defvar *last-frame-time* 0)
@@ -45,17 +51,35 @@
 (defun frame ()
   *frame*)
 
-(defmacro with-game-loop (&body body)
+(defun fps ()
+  (unless (= *dt* 0)
+    (/ 1 *dt*)))
+
+(defun open-window ()
+  (glfw:init)
+  (unless *window*
+    (setf *window* (make-instance 'game-window))))
+
+(defun close-window ()
+  (glfw:destroy *window*)
+  (glfw:shutdown))
+
+(defmacro with-window (&body body)
   `(progn
-     (glfw:init)
-     (setf *window* (make-instance 'game-window))
-     (loop unless (glfw:should-close-p *window*)
-           do (progn
-                (incf *frame*)
-                #+micros (read-repl)
-                (calculate-dt)
-                (glfw:poll-events)
-                ,@body
-                (glfw:swap-buffers *window*)))
-     (glfw:destroy *window*)
-     (glfw:shutdown)))
+     (open-window)
+     (unwind-protect
+          (progn ,@body)
+       (close-window))))
+
+(defmacro with-event-loop (&body body)
+  `(with-window
+       (loop unless (glfw:should-close-p *window*)
+             do (progn
+                  (incf *frame*)
+                  #+micros (let ((*features* `(,@*features* :in-game-loop)))
+                               (read-repl))
+                  (calculate-dt)
+                  (glfw:poll-events)
+                  (continuable
+                    ,@body)
+                  (glfw:swap-buffers *window*)))))

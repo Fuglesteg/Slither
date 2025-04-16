@@ -1,45 +1,67 @@
-(defpackage #:slither/render/shader
+(uiop:define-package #:slither/render/shader
   (:use #:cl)
-  (:export
-   :use-program))
+  (:export :shader-id
+           :shader
+           :vertex-shader
+           :fragment-shader
+           :compile-shader)
+  (:import-from :slither/utils
+                :defmemo)
+  (:import-from :slither/assets
+                :defasset
+                :asset-data))
 
 (in-package #:slither/render/shader)
 
-; TODO: Load source with a macro
 (defclass shader ()
-  ((path
-    :initarg :path
-    :accessor path
-    :type pathname)
+  ((name
+    :initarg :name
+    :accessor shader-name)
    (id
     :initarg :id
     :type integer
     :initform 0
-    :accessor id)
-   (shader-type
+    :accessor shader-id)
+   (type
     :initform nil
-    :initarg :shader-type
+    :initarg :type
     :accessor shader-type)))
 
 (defclass vertex-shader (shader) ()
-  (:default-initargs :shader-type :vertex-shader))
+  (:default-initargs :type :vertex-shader))
 
 (defclass fragment-shader (shader) ()
-  (:default-initargs :shader-type :fragment-shader))
+  (:default-initargs :type :fragment-shader))
 
-(defun shader-compiled-successfully-p (shader-id)
-  (let ((status (cffi:foreign-alloc :int)))
-    (%gl:get-shader-iv shader-id :compile-status status)
+(defmethod shader-compiled-successfully-p ((shader shader))
+  (let ((id (shader-id shader))
+        (status (cffi:foreign-alloc :int :initial-element 0)))
+    (%gl:get-shader-iv id :compile-status status)
     (let ((successfully-compiled (= 1 (cffi:mem-ref status :int))))
       (cffi:foreign-free status)
       successfully-compiled)))
 
+(defmethod compile-shader ((shader shader))
+  (let ((source (asset-data (shader-name shader)))
+        (id (shader-id shader)))
+    (gl:shader-source id source)
+    (gl:compile-shader id)
+    #+dev (unless (shader-compiled-successfully-p shader)
+      (format t "~a:~%~a" (shader-name shader)
+              (gl:get-shader-info-log id)))))
+
 (defmethod initialize-instance :after ((shader shader) &key)
-  (let ((shader-id (gl:create-shader (shader-type shader))))
-    (gl:shader-source shader-id (uiop:read-file-string (path shader)))
-    (gl:compile-shader shader-id)
-    
-    (if (shader-compiled-successfully-p shader-id)
-          (setf (id shader) shader-id)
-          (format t "~a:~%~a" (path shader) 
-                  (gl:get-shader-info-log shader-id)))))
+  (setf (shader-id shader) (gl:create-shader (shader-type shader)))
+  (compile-shader shader))
+
+(defmacro defshader (name &key path type)
+  `(progn
+     (defasset (quote ,name) ,path)
+     (defmemo ,name
+       (make-instance ,type :name (quote ,name)))))
+
+(defmacro define-vertex-shader (name &key path)
+  `(defshader ,name :path ,path :type 'vertex-shader))
+
+(defmacro define-fragment-shader (name &key path)
+  `(defshader ,name :path ,path :type 'fragment-shader))

@@ -1,41 +1,72 @@
-(defpackage #:slither/render
-  (:use #:cl)
-  (:import-from :alexandria
-                #:with-gensyms))
+(uiop:define-package #:slither/render
+  (:use :cl
+        :org.shirakumo.fraf.math.matrices
+        :org.shirakumo.fraf.math.vectors)
+  (:import-from :slither/render/uniform
+                #:value
+                #:uniform)
+  (:import-from :slither/render/texture
+                #:bind-texture)
+  (:import-from :slither/render/shader-program
+                #:shader-program
+                #:shader-program-id
+                #:get-uniform
+                #:make-shader-program)
+  (:import-from :slither/render/shader
+                #:define-vertex-shader
+                #:define-fragment-shader
+                #:vertex-shader
+                #:fragment-shader
+                #:shader)
+  (:import-from :slither/render/vertex
+                #:quad
+                #:sprite)
+  (:import-from :slither/utils
+                #:defmemo)
+  (:export #:set-model-matrix
+           #:set-camera-position
+           #:sprite
+           #:render
+           #:static
+           #:quad
+           #:renderer-init
+           #:draw-rectangle))
 
 (in-package #:slither/render)
 
-(defparameter *color-shader-program* nil)
-(defun color-shader-program ()
-  (when (null *color-shader-program*)
-    (setf *color-shader-program* 
-          (make-instance 'shader-program
-                         :vertex-shader (make-instance 'vertex-shader
-                                                       :path "./vertex.glsl")
-                         :fragment-shader (make-instance 'fragment-shader
-                                                         :path "./color.glsl")
-                         :uniforms (list
-                                    (make-instance 'uniform
-                                                   :name "modelMatrix")
-                                    (make-instance 'uniform
-                                                   :name "viewMatrix")))))
-  *color-shader-program*)
+(defvar *model-matrix* (meye 3))
+(defun set-model-matrix (matrix)
+  (setf *model-matrix* matrix))
 
-(defparameter *sprite-shader-program* nil)
-(defun sprite-shader-program ()
-  (when (null *sprite-shader-program*)
-    (setf *sprite-shader-program*
-          (make-instance 'shader-program
-                         :vertex-shader (make-instance 'vertex-shader
-                                                       :path "./vertex.glsl")
-                         :fragment-shader (make-instance 'fragment-shader
-                                                         :path "./sprite.glsl")
-                         :uniforms (list
-                                    (make-instance 'uniform
-                                                   :name "modelMatrix")
-                                    (make-instance 'uniform
-                                                   :name "viewMatrix")))))
-  *sprite-shader-program*)
+(defvar *view-matrix* nil)
+(defun set-camera-position (position)
+  (setf *view-matrix* (nmtranslate (nmscale (meye 3) (vec2 0.09 0.16)) position))) ; TODO: aspect ratio
+
+(defvar *color* nil)
+
+(define-vertex-shader static :path "./render/shaders/static.vert")
+(define-vertex-shader world-space :path "./render/shaders/world-space.vert")
+(define-fragment-shader color :path "./render/shaders/color.frag")
+(define-vertex-shader texture :path "./render/shaders/world-space.vert")
+(define-fragment-shader sprite :path "./render/shaders/color.frag")
+
+(defmemo static-shader-program
+  (make-shader-program :vertex-shader (static)
+                       :fragment-shader (color)
+                       :uniform-symbols '(color)))
+
+(defmemo color-shader-program
+  (make-shader-program :vertex-shader (world-space)
+                       :fragment-shader (color)
+                       :uniform-symbols '(model-matrix
+                                          view-matrix
+                                          color)))
+
+(defmemo sprite-shader-program
+  (make-shader-program :vertex-shader (texture)
+                       :fragment-shader (sprite)
+                       :uniform-symbols '(model-matrix
+                                          view-matrix)))
 
 (defclass renderable ()
   ((vao
@@ -47,150 +78,62 @@
 
 (defgeneric render (renderable))
 
-(defmethod render :before ((renderable renderable))
+(defmethod render :around ((renderable renderable))
   (with-slots (shader-program vao) renderable
-    (gl:use-program (id shader-program))
-    (gl:bind-vertex-array vao)))
+    (gl:use-program (shader-program-id shader-program))
+    (gl:bind-vertex-array vao)
+    (call-next-method)
+    (gl:bind-vertex-array 0)
+    (gl:use-program 0)))
 
-(defmethod render :after ((renderable renderable))
-  (gl:bind-vertex-array 0)
-  (gl:use-program 0))
+(defclass static (renderable) ()
+  (:default-initargs
+   :vao (quad)
+   :shader-program (static-shader-program)))
+
+(defmethod render ((static static))
+  (%gl:draw-elements :triangles 6 :unsigned-int 0))
 
 (defclass quad (renderable) ()
   (:default-initargs 
-   :vao (gen-quad)
-   :shader-program (color-shader)))
+   :vao (quad)
+   :shader-program (color-shader-program)))
+
+(defmethod render :before ((quad quad))
+  (setf (value (get-uniform (shader-program quad) 'model-matrix)) *model-matrix*
+        (value (get-uniform (shader-program quad) 'view-matrix)) *view-matrix*
+        (value (get-uniform (shader-program quad) 'color)) *color*))
 
 (defmethod render ((quad quad))
   (%gl:draw-elements :triangles 6 :unsigned-int 0))
 
 (defclass sprite (quad)
   ((texture
-    :accessor texture
+    :accessor sprite-texture
     :initarg :texture))
   (:default-initargs
-   :shader-program (sprite-shader)))
+   :vao (sprite)
+   :shader-program (sprite-shader-program)))
 
 (defmethod render :before ((sprite sprite))
   (call-next-method)
-  (bind-texture (texture sprite)))
+  (bind-texture (sprite-texture sprite)))
 
 (defmethod render :after ((sprite sprite))
   (bind-texture 0)
   (call-next-method))
 
-(defmacro with-vertex-array (name &body body)
-  `(let ((,name (gl:gen-vertex-array)))
-     (gl:bind-vertex-array ,name)
-     ,@body
-     (gl:bind-vertex-array 0)))
+(defvar *quad* nil)
+(defvar *sprite* nil)
 
-(defmacro with-buffer (name type &body body)
-  `(let ((,name (gl:gen-buffer)))
-     (gl:bind-buffer ,type ,name)
-     ,@body
-     (gl:bind-buffer ,type 0)))
+(defun renderer-init ()
+  (when (and (not *quad*) (not *sprite*))
+    (setf *quad* (make-instance 'quad)
+          *sprite* (make-instance 'sprite))))
 
-(defun gen-quad-buffer (&key (usage-frequency :dynamic-draw))
-  (with-buffer vbo :array-buffer
-    (with-quad-vertices-array (vertice-data)
-      (%gl:buffer-data :array-buffer
-                       (* (length vertice-data) 
-                          (cffi:foreign-type-size :float))
-                       (static-vectors:static-vector-pointer vertice-data)
-                       usage-frequency))))
-
-(defun cffi-type-of-vector (vector)
-  (lisp-type->cffi-type (elt vector 0)))
-
-(defun lisp-type->cffi-type (lisp-type)
-  (case lisp-type
-    (single-float :float)
-    (double-float :double)
-    (string :string)
-    (fixnum :int)
-    (integer :long)
-    (boolean :bool)
-    (otherwise (error "No C conversion available for type: ~a" lisp-type))))
-
-(defun vector->static-vector (vector)
-  (static-vectors:make-static-vector (length vector)
-                                     :element-type 
-                                     (cffi-type-of-vector vector)
-                                     :initial-contents vector))
-
-(defun cffi-memory-size-of-vector (vector)
-  (* (length vector) (cffi-type-of-vector vector)))
-
-(defun send-buffer-data (vector &key (buffer-type :array-buffer)
-                                     (usage-type :static-draw))
-  (%gl:buffer-data buffer-type
-                   (cffi-memory-size-of-vector vector)
-                   (static-vectors:static-vector-pointer 
-                    (vector->static-vector vector))
-                   usage-type))
-
-(defmacro define-vertex-array-object (name &key vertices 
-                                                indices 
-                                                (usage-type :static-draw))
-  (with-gensyms (vao vbo ebo)
-    `(with-vertex-array ,vao
-       (with-buffer ,vbo :array-buffer
-         (send-buffer-data ,vertices
-                           :usage-type ,usage-type))
-       (with-buffer ,ebo :element-array-buffer
-         (send-buffer-data ,indices
-                           :usage-type ,usage-type))
-       (gl:vertex-attrib-pointer 0 2 :float nil (* 2 (cffi:foreign-type-size :float)) 0))))
-
-(defun gen-quad ()
-  (let ((vao (gl:gen-vertex-array))
-        (vbo (gl:gen-buffer))
-        (ebo (gl:gen-buffer)))
-    (gl:bind-vertex-array vao)
-    (gl:bind-buffer :array-buffer vbo)
-    (let ((sv (get-gl-quad 0.0 0.0 1.0 1.0)))
-      (%gl:buffer-data :array-buffer 
-                       (* 8 (cffi:foreign-type-size :float))
-                       (static-vectors:static-vector-pointer sv)
-                       :static-draw)
-      (static-vectors:free-static-vector sv))
-    (gl:bind-buffer :element-array-buffer ebo)
-    (let ((sv (get-quad-indices-array)))
-      (%gl:buffer-data :element-array-buffer 
-                       (* 6 (cffi:foreign-type-size :unsigned-int))
-                       (static-vectors:static-vector-pointer sv)
-                       :static-draw)
-      (static-vectors:free-static-vector sv))
-    (gl:vertex-attrib-pointer 0 2 :float nil (* 2 (cffi:foreign-type-size :float)) 0)
-    (gl:enable-vertex-attrib-array 0)
-    (gl:bind-buffer :array-buffer 0)
-    (gl:bind-vertex-array 0)
-    vao))
-
-(defmacro with-quad-vertices-array ((var &key (x 0)(y 0) 
-                                              (width 1) 
-                                              (height 1)) 
-                                    &body body)
-  `(static-vectors:with-static-vector (,var 8 
-                                     :element-type 'single-float
-                                     :initial-contents (get-quad-positions x y width height))
-     ,@body))
-
-
-
-(defun get-quad-vertices (x y width height)
-  (let ((left (- x (/ width 2)))
-        (right (+ x (/ width 2)))
-        (down (+ y (/ height 2)))
-        (up (- y (/ height 2))))
-    (list 
-     right up
-     right down
-     left down
-     left up)))
-
-(defun get-quad-indices-array ()
-  (static-vectors:make-static-vector 6 
-                                     :element-type '(unsigned-byte 32)
-                                     :initial-contents '(0 1 3 1 2 3)))
+(defun draw-rectangle (position size color)
+  (let ((*model-matrix* (nmtranslate (nmscale (meye 3) size) position))
+        (*color* color))
+    (render *quad*)))
+  
+;(defun draw-texture (position size texture))

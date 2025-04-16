@@ -5,7 +5,6 @@
              (guix gexp)
              ((guix licenses) #:prefix licenses:))
 
-
 (define slither
   (package
    (name "slither")
@@ -17,6 +16,7 @@
             sbcl-3d-math
             sbcl-glfw
             sbcl-static-vectors
+            sbcl-file-notify
             sbcl-pngload
             sbcl-alexandria
             sbcl-serapeum))

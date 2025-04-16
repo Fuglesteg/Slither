@@ -1,59 +1,42 @@
-(defpackage #:slither
+(uiop:define-package #:slither
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
+        #:slither/utils
         #:slither/render
         #:slither/window
         #:slither/input)
-  (:export :start-game
-           :define-game-object))
+  (:import-from :slither/render/uniform
+                #:uniform-value
+                #:uniform-location)
+  (:import-from :slither/render/shader-program
+                #:shader-program
+                #:make-shader-program
+                #:set-uniform-value
+                #:get-uniform)
+  (:export #:start-game
+           #:defentity
+           #:add-entity
+           #:base-uniform-location
+           #:uniform-size))
 
 (in-package #:slither)
 
+(declaim (optimize (speed 0) (safety 3) (debug 3)))
 (defvar *entities* '())
+(defvar *camera-position* (vec2 1.0))
 
-(defun start-game ()
-  (with-game-loop 
-    (update-entities) 
-    (render-entities)))
+(defun on-system-load ()
+  (pushnew :dev *features*))
 
-(defmacro defentity (name slots &body sections)
-  `(progn
-     ,@(loop for (keyword entity-symbol . forms) in sections
-             with renderer = nil
-             when (eql keyword 'tick)
-             collect `(defmethod tick ((,entity-symbol ,name))
-                        ,@forms) into methods
-             when (eql keyword 'start)
-             collect `(defmethod start ((,entity-symbol ,name))
-                        ,@forms) into methods
-             when (eql keyword 'behaviors)
-             collect (cons entity-symbol forms) into behaviors
-             when (eql keyword 'renderer)
-             do (setf renderer entity-symbol)
-             finally (return
-                `((defclass ,name '(entity)
-                   (,@slots)
-                    (:default-initargs
-                    :behaviors ,behaviors
-                    :renderer ,(if (symbolp renderer)
-                                   `(make-instance ,renderer)
-                                   renderer)))
-                  ,@methods)))))
-
-(defentity player
-  ((speed
-    :initform (vec2 0.0 0.0)))
-  (renderer quad)
-  (tick player
-        (with-slots (location speed) player
-          (let ((speed-up-vector 
-                  (vec2 (+ (if (key-held-p #\d) 1.0 0.0)
-                           (if (key-held-p #\a) -1.0 0.0))
-                        (+ (if (key-held-p #\w) 1.0 0.0)
-                           (if (key-held-p #\s) -1.0 0.0)))))
-            (setf speed (v+ speed speed-up-vector))
-            (setf location (v+ location speed))))))
+(defun start-game (&optional start-procedure)
+  (with-window
+    (when start-procedure
+      (funcall start-procedure))
+    (renderer-init)
+    (with-event-loop
+      (update-entities) 
+      (render-entities))))
 
 (defun update-entities ()
   (loop for entity in *entities*
@@ -61,34 +44,121 @@
 
 (defun render-entities ()
   (gl:clear :color-buffer)
-  (loop for entity in *entities*
-        do (render entity))
+  (set-camera-position *camera-position*)
   (gl:flush))
 
+;;; Entities
+
+(defun add-entity (&rest entities)
+  (dolist (entity entities)
+    (push entity entities)
+    (start entity)))
+
+(defun remove-entity (entity)
+  (setf *entities* (remove entity *entities*)))
+
 (defclass transform ()
-  ((location
-    :initform (make-instance 'vec2)
-    :accessor location
+  ((position
+    :initform (vec2 0.0)
+    :accessor transform-position
     :initarg :location)
+   (size
+    :initform (vec2 100.0 100.0)
+    :accessor transform-size
+    :initarg :size)
    (rotation
     :initform 0
-    :accessor rotation
+    :accessor transform-rotation
     :initarg :rotation)))
 
 (defclass entity (transform) 
-  ((renderer
-    :initarg :renderer)
-   (behaviors
-    :accessor behaviors
+  ((behaviors
+    :accessor entity-behaviors
     :initarg :behaviors)))
 
 (defgeneric tick (entity))
+
+(defmethod tick :before ((entity entity))
+  (loop for behavior in (entity-behaviors entity)
+        do (behavior-tick behavior entity)))
+
 (defgeneric start (entity))
+
+(defmethod start :before ((entity entity))
+  (loop for behavior in (entity-behaviors entity)
+        do (behavior-start behavior entity)))
+
 (defmethod render ((entity entity))
-  (with-slots (renderer) entity
+  (with-slots (renderer location size) entity
     (when renderer 
+      (set-model-matrix (nmtranslate 
+                         (nmscale 
+                          (nmscale (meye 3) (vec2 0.01 0.01)) 
+                          size) 
+                         location))
       (render renderer))))
 
-(defvar *model-matrix* (meye 3))
-(defvar *camera-position* (vec2 1.0))
-(defvar *view-matrix* (nmtranslate (nmscale (meye 3) (vec2 0.5 0.5)) *camera-position*))
+(defmacro defentity (name slots &body sections)
+  `(progn
+     ,@(loop for (keyword . arguments) in sections
+             with renderer = nil
+             when (string= keyword :tick)
+             collect (destructuring-bind (&optional entity-symbol . forms) arguments
+                       `(defmethod tick ((,entity-symbol ,name))
+                        ,@forms)) into methods
+             when (string= keyword :start)
+             collect (destructuring-bind (&optional entity-symbol . forms) arguments
+                       `(defmethod start ((,entity-symbol ,name))
+                          ,@forms)) into methods
+             when (string= keyword :behaviors)
+             collect arguments into behaviors
+             when (string= keyword :uniforms)
+             append (loop for uniform in arguments
+                           for i from 0
+                           collect `(defmethod (setf ,uniform) :after (value (,name ,name))
+                                      (with-slots (shader-program) ,name
+                                        (set-uniform-value shader-program ,i value))))
+                 into methods
+             and
+             collect `(defmethod uniform-size ((,name ,name))
+                       ,(length arguments))
+                 into methods
+             and
+             collect '(base-uniform-location
+                      :initarg :base-uniform-location
+                      :initform 0
+                      :accessor base-uniform-location)
+                 into extra-slots
+             finally (return
+                       `((defclass ,name (entity)
+                           (,@slots ,@extra-slots)
+                           (:default-initargs
+                            :behaviors ,behaviors))
+                         ,@methods)))))
+
+;;; Behaviors
+
+(defclass behavior () ())
+
+(defgeneric behavior-tick (behavior entity))
+
+(defmacro defbehavior (name slots &body sections)
+  `(progn
+     (defclass ,name (behavior) ,slots)
+     ,@(loop for (keyword . arguments) in sections
+             when (string= keyword :tick)
+             collect (destructuring-bind ((&optional behavior entity) . tick-body) arguments
+                       `(defmethod behavior-tick ((,name ,behavior) (entity ,entity))
+                         ,@tick-body))
+             when (string= keyword :start)
+             collect (destructuring-bind ((&optional behavior entity) . start-body) arguments
+                       `(defmethod behavior-start ((,name ,behavior) (entity ,entity))
+                         ,@start-body)))))
+
+(defbehavior rectangle
+    ((color
+      :accessor rectangle-color
+      :initarg :color))
+  (:tick (rectangle entity)
+   (
+   (draw-rectangle 

@@ -6,9 +6,13 @@
   :depends-on (#:cl-opengl
                #:3d-math
                #:glfw
-               #:static-vectors)
+               #:static-vectors
+               (:feature :dev #:file-notify)
+               #:alexandria
+               #:serapeum)
   :serial t
   :components ((:file "utils")
+               (:file "assets")
                (:module "render"
                 :serial t
                 :components
@@ -16,6 +20,7 @@
                  (:file "texture")
                  (:file "shader")
                  (:file "shader-program")
+                 (:file "vertex")
                  (:file "render")))
                (:file "input")
                (:file "window")

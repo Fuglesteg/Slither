@@ -1,5 +1,7 @@
-(defpackage #:slither/render/texture
-  (:use #:cl))
+(uiop:define-package #:slither/render/texture
+  (:use :cl)
+  (:export #:texture
+           #:bind-texture))
 
 (in-package #:slither/render/texture)
 
