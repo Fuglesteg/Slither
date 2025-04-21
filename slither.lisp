@@ -22,12 +22,16 @@
 
 (in-package #:slither)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3)))
 (defvar *entities* '())
 (defvar *camera-position* (vec2 1.0))
 
-(defun on-system-load ()
-  (pushnew :dev *features*))
+#+nil
+(setf *entities*
+      (list
+       (make-instance 'entity
+                      :behaviors (list 
+                                  (make-instance 'rectangle
+                                                 :color (vec4 255 255 255 255))))))
 
 (defun start-game (&optional start-procedure)
   (with-window
@@ -35,17 +39,17 @@
       (funcall start-procedure))
     (renderer-init)
     (with-event-loop
-      (update-entities) 
-      (render-entities))))
+      (update-entities))))
 
 (defun update-entities ()
-  (loop for entity in *entities*
-        do (tick entity)))
-
-(defun render-entities ()
   (gl:clear :color-buffer)
   (set-camera-position *camera-position*)
+  (loop for entity in *entities*
+        do (tick entity))
   (gl:flush))
+
+(defun render-entities ()
+  )
 
 ;;; Entities
 
@@ -78,13 +82,13 @@
 
 (defgeneric tick (entity))
 
-(defmethod tick :before ((entity entity))
+(defmethod tick ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-tick behavior entity)))
 
 (defgeneric start (entity))
 
-(defmethod start :before ((entity entity))
+(defmethod start ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-start behavior entity)))
 
@@ -141,6 +145,7 @@
 (defclass behavior () ())
 
 (defgeneric behavior-tick (behavior entity))
+(defgeneric behavior-start (behavior entity))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn
@@ -160,5 +165,34 @@
       :accessor rectangle-color
       :initarg :color))
   (:tick (rectangle entity)
-   (
-   (draw-rectangle 
+   (with-accessors ((position transform-position)
+                    (size transform-size))
+       entity
+     (draw-rectangle position size (rectangle-color rectangle)))))
+
+(defbehavior move
+    ((dx
+      :accessor move-dx
+      :initarg :dx
+      :initform 0)
+     (dy
+      :accessor move-dy
+      :initarg :dy
+      :initform 0))
+  (:tick (move entity)
+   (with-slots (dx dy) move
+     (incf dx (+ (if (key-held-p #\d)
+                     1
+                     0)
+                 (if (key-held-p #\a)
+                     -1
+                     0)))
+     (incf dy (+ (if (key-held-p #\w)
+                     1
+                     0)
+                 (if (key-held-p #\s)
+                     -1
+                     0)))
+     (with-accessors ((position transform-position)) entity
+       (incf (vx position) dx)
+       (incf (vy position) dy)))))
