@@ -39,11 +39,16 @@
   (setf *model-matrix* matrix))
 
 (defvar *view-matrix* nil)
-(defun set-camera-position (position)
-  (setf *view-matrix* (nmtranslate (nmscale (meye 3) (vec2 0.09 0.16)) position))) ; TODO: aspect ratio
+(defun set-camera-position (position &optional (zoom 1.0) (aspect 16/9)) ; TODO: dynamic aspect ratio
+  (setf *view-matrix*
+        (nm*
+         (mscaling (vec2 (/ zoom aspect) zoom))
+         (mtranslation
+          (v* position -1)))))
 
 (defvar *color* nil)
 
+; TODO: Introduce delay-evaluation
 (define-vertex-shader static :path "./render/shaders/static.vert")
 (define-vertex-shader world-space :path "./render/shaders/world-space.vert")
 (define-fragment-shader color :path "./render/shaders/color.frag")
@@ -127,12 +132,18 @@
 (defvar *sprite* nil)
 
 (defun renderer-init ()
-  (when (and (not *quad*) (not *sprite*))
-    (setf *quad* (make-instance 'quad)
-          *sprite* (make-instance 'sprite))))
+  (unless *quad*
+    (setf *quad* (make-instance 'quad)))
+  (unless *sprite*
+    (setf *sprite* (make-instance 'sprite))))
 
 (defun draw-rectangle (position size color)
-  (let ((*model-matrix* (nmtranslate (nmscale (meye 3) size) position))
+  (let ((*model-matrix* 
+          (nmscale
+           (nmtranslate
+            (meye 3)
+            position)
+           size))
         (*color* color))
     (render *quad*)))
   

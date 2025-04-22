@@ -23,15 +23,6 @@
 (in-package #:slither)
 
 (defvar *entities* '())
-(defvar *camera-position* (vec2 1.0))
-
-#+nil
-(setf *entities*
-      (list
-       (make-instance 'entity
-                      :behaviors (list 
-                                  (make-instance 'rectangle
-                                                 :color (vec4 255 255 255 255))))))
 
 (defun start-game (&optional start-procedure)
   (with-window
@@ -43,7 +34,6 @@
 
 (defun update-entities ()
   (gl:clear :color-buffer)
-  (set-camera-position *camera-position*)
   (loop for entity in *entities*
         do (tick entity))
   (gl:flush))
@@ -65,7 +55,7 @@
   ((position
     :initform (vec2 0.0)
     :accessor transform-position
-    :initarg :location)
+    :initarg :position)
    (size
     :initform (vec2 100.0 100.0)
     :accessor transform-size
@@ -91,16 +81,6 @@
 (defmethod start ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-start behavior entity)))
-
-(defmethod render ((entity entity))
-  (with-slots (renderer location size) entity
-    (when renderer 
-      (set-model-matrix (nmtranslate 
-                         (nmscale 
-                          (nmscale (meye 3) (vec2 0.01 0.01)) 
-                          size) 
-                         location))
-      (render renderer))))
 
 (defmacro defentity (name slots &body sections)
   `(progn
@@ -157,12 +137,13 @@
                          ,@tick-body))
              when (string= keyword :start)
              collect (destructuring-bind ((&optional behavior entity) . start-body) arguments
-                       `(defmethod behavior-start ((,name ,behavior) (entity ,entity))
+                       `(defmethod behavior-start ((,name ,behavior) (,entity entity))
                          ,@start-body)))))
 
 (defbehavior rectangle
     ((color
       :accessor rectangle-color
+      :initform (vec4 255 255 255 255)
       :initarg :color))
   (:tick (rectangle entity)
    (with-accessors ((position transform-position)
@@ -181,18 +162,69 @@
       :initform 0))
   (:tick (move entity)
    (with-slots (dx dy) move
-     (incf dx (+ (if (key-held-p #\d)
+     (incf dx (* dx 5 *dt* -1))
+     (incf dy (* dy 5 *dt* -1))
+     (incf dx (+ (if (key-held-p :d)
                      1
                      0)
-                 (if (key-held-p #\a)
+                 (if (key-held-p :a)
                      -1
                      0)))
-     (incf dy (+ (if (key-held-p #\w)
+     (incf dy (+ (if (key-held-p :w)
                      1
                      0)
-                 (if (key-held-p #\s)
+                 (if (key-held-p :s)
                      -1
                      0)))
      (with-accessors ((position transform-position)) entity
-       (incf (vx position) dx)
-       (incf (vy position) dy)))))
+       (incf (vx position) (* dx *dt*))
+       (incf (vy position) (* dy *dt*))))))
+
+(defbehavior camera
+    ((zoom
+      :initform 1.0
+      :accessor camera-zoom
+      :initarg :zoom))
+  (:tick (camera entity)
+   (with-accessors ((zoom camera-zoom)) camera
+   (when (key-held-p :i)
+     (incf zoom
+           *dt*))
+   (when (and (key-held-p :o)
+              (> zoom 0.01))
+     (decf zoom
+           *dt*))
+   (set-camera-position (transform-position entity) zoom))))
+
+(defbehavior follow
+    ((target
+      :initarg :target))
+  (:tick (follow entity)
+   (with-slots (target) follow
+     (with-accessors ((position transform-position)) entity
+       (setf position (transform-position target))))))
+
+#+nil(let ((player (make-instance 'entity
+                             :size (vec2 1.0 1.0)
+                             :behaviors (list 
+                                         (make-instance 'rectangle
+                                                        :color (vec4 255 0 0 255))
+                                         (make-instance 'move)))))
+(setf *entities*
+      (list
+       (make-instance 'entity
+                      :size (vec2 0.2 0.2)
+                      :behaviors (list 
+                                  (make-instance 'camera)))
+       (make-instance 'entity
+                      :position (vec2 2 3)
+                      :size (vec2 1.0 1.0)
+                      :behaviors (list 
+                                  (make-instance 'rectangle
+                                                 :color (vec4 255 255 255 255))))
+       (make-instance 'entity
+                      :size (vec2 1.0 1.0)
+                      :behaviors (list 
+                                  (make-instance 'rectangle
+                                                 :color (vec4 255 255 255 255))))
+       player)))
