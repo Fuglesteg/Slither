@@ -47,8 +47,9 @@
     (gl:shader-source id source)
     (gl:compile-shader id)
     #+dev (unless (shader-compiled-successfully-p shader)
-      (format t "~a:~%~a" (shader-name shader)
-              (gl:get-shader-info-log id)))))
+            (error "Shader\"~a\" compiled unsuccessfully::~%~a"
+                   (shader-name shader)
+                   (gl:get-shader-info-log id)))))
 
 (defmethod initialize-instance :after ((shader shader) &key)
   (setf (shader-id shader) (gl:create-shader (shader-type shader)))

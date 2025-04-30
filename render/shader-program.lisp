@@ -17,7 +17,7 @@
            #:get-uniform
            #:use-program
            #:shader-program
-           #:shader-program-recompile
+           #:shader-program-compile
            #:make-shader-program
            #:set-uniform-value))
 
@@ -42,13 +42,17 @@
     :initform '()
     :type list)))
 
+(defmethod program-linked-successfully-p ((program shader-program))
+  (let ((id (shader-program-id program))
+        (status (cffi:foreign-alloc :int :initial-element 0)))
+    (%gl:get-program-iv id :link-status status)
+    (let ((successfully-compiled (= 1 (cffi:mem-ref status :int))))
+      (cffi:foreign-free status)
+      successfully-compiled)))
+
 (defmethod initialize-instance :after ((program shader-program) &key)
-  (let ((program-id (gl:create-program)))
-    (with-slots (vertex-shader fragment-shader uniforms) program
-      (gl:attach-shader program-id (shader-id vertex-shader))
-      (gl:attach-shader program-id (shader-id fragment-shader))
-      (gl:link-program program-id)
-      (setf (shader-program-id program) program-id))))
+  (setf (shader-program-id program) (gl:create-program))
+  (shader-program-compile program))
 
 (defmethod bind-program ((program shader-program))
   (gl:use-program (shader-program-id program)))
@@ -73,16 +77,25 @@
 (defmethod get-uniform ((program shader-program) (uniform-symbol symbol))
   (find uniform-symbol (uniforms program) :key #'uniform-symbol))
 
-(defmethod shader-program-recompile ((program shader-program))
+(defmethod shader-program-compile ((program shader-program))
   (with-slots (vertex-shader fragment-shader id) program
     (compile-shader vertex-shader)
     (compile-shader fragment-shader)
-    (gl:link-program id)))
+    (gl:link-program id)
+    #+dev (unless (program-linked-successfully-p program)
+            (error "Shader program failed to link:~%~a"
+                   (gl:get-program-info-log id)))
+    (loop for uniform in (uniforms program)
+          do (setf (uniform-location uniform)
+                   (shader-program-uniform-location program (uniform-symbol uniform))))))
+
+(defmethod shader-program-uniform-location ((program shader-program) (uniform-symbol symbol))
+  (gl:get-uniform-location (shader-program-id program) (symbol->camel-case uniform-symbol)))
   
 (defun make-uniform (program uniform-symbol)
   (make-instance 'uniform
                  :symbol uniform-symbol
-                 :location (gl:get-uniform-location (shader-program-id program) (symbol->camel-case uniform-symbol))))
+                 :location (shader-program-uniform-location program uniform-symbol)))
 
 (defun make-shader-program (&key vertex-shader fragment-shader uniform-symbols)
   (let ((shader-program (make-instance 'shader-program
