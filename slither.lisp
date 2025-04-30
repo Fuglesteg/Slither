@@ -16,9 +16,12 @@
                 #:get-uniform)
   (:export #:start-game
            #:defentity
+           #:defbehavior
            #:add-entity
            #:base-uniform-location
-           #:uniform-size))
+           #:uniform-size
+           #:position
+           #:rotation))
 
 (in-package #:slither)
 
@@ -45,7 +48,7 @@
 
 (defun add-entity (&rest entities)
   (dolist (entity entities)
-    (push entity entities)
+    (push entity *entities*)
     (start entity)))
 
 (defun remove-entity (entity)
@@ -78,9 +81,10 @@
 
 (defgeneric start (entity))
 
-(defmethod start ((entity entity))
+(defmethod start :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-start behavior entity)))
+(defmethod start ((entity entity)))
 
 (defmacro defentity (name slots &body sections)
   `(progn
@@ -95,7 +99,7 @@
                        `(defmethod start ((,entity-symbol ,name))
                           ,@forms)) into methods
              when (string= keyword :behaviors)
-             collect arguments into behaviors
+             append arguments into behaviors
              when (string= keyword :uniforms)
              append (loop for uniform in arguments
                            for i from 0
@@ -117,7 +121,7 @@
                        `((defclass ,name (entity)
                            (,@slots ,@extra-slots)
                            (:default-initargs
-                            :behaviors ,behaviors))
+                            :behaviors (list ,@behaviors)))
                          ,@methods)))))
 
 ;;; Behaviors
@@ -125,7 +129,10 @@
 (defclass behavior () ())
 
 (defgeneric behavior-tick (behavior entity))
+(defmethod behavior-tick ((behavior behavior) (entity entity)))
+  
 (defgeneric behavior-start (behavior entity))
+(defmethod behavior-start ((behavior behavior) (entity entity)))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn
@@ -133,11 +140,11 @@
      ,@(loop for (keyword . arguments) in sections
              when (string= keyword :tick)
              collect (destructuring-bind ((&optional behavior entity) . tick-body) arguments
-                       `(defmethod behavior-tick ((,name ,behavior) (entity ,entity))
+                       `(defmethod behavior-tick ((,behavior ,name) (,entity entity))
                          ,@tick-body))
              when (string= keyword :start)
              collect (destructuring-bind ((&optional behavior entity) . start-body) arguments
-                       `(defmethod behavior-start ((,name ,behavior) (,entity entity))
+                       `(defmethod behavior-start ((,behavior ,name) (,entity entity))
                          ,@start-body)))))
 
 (defbehavior rectangle
@@ -155,30 +162,37 @@
     ((dx
       :accessor move-dx
       :initarg :dx
-      :initform 0)
+      :initform 0.0
+      :type single-float)
      (dy
       :accessor move-dy
       :initarg :dy
-      :initform 0))
+      :initform 0.0
+      :type single-float)
+     (speed
+      :accessor move-speed
+      :initarg :speed
+      :initform 1.0
+      :type single-float))
   (:tick (move entity)
-   (with-slots (dx dy) move
-     (incf dx (* dx 5 *dt* -1))
-     (incf dy (* dy 5 *dt* -1))
+   (with-slots (dx dy speed) move
+     (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
+     (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
      (incf dx (+ (if (key-held-p :d)
-                     1
+                     speed
                      0)
                  (if (key-held-p :a)
-                     -1
+                     (* speed -1)
                      0)))
      (incf dy (+ (if (key-held-p :w)
-                     1
+                     speed
                      0)
                  (if (key-held-p :s)
-                     -1
+                     (* speed -1)
                      0)))
      (with-accessors ((position transform-position)) entity
-       (incf (vx position) (* dx *dt*))
-       (incf (vy position) (* dy *dt*))))))
+       (incf (vx position) (* dx (coerce *dt* 'single-float)))
+       (incf (vy position) (* dy (coerce *dt* 'single-float)))))))
 
 (defbehavior camera
     ((zoom
