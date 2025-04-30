@@ -1,6 +1,6 @@
 (uiop:define-package :slither/assets
   (:use #:cl)
-  (:local-nicknames (:notify :org.shirakumo.file-notify))
+  #+dev(:local-nicknames (:notify :org.shirakumo.file-notify))
   (:export #:asset-data
            #:asset-reload
            #:defasset))
