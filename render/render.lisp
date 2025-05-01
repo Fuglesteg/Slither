@@ -3,7 +3,7 @@
         :org.shirakumo.fraf.math.matrices
         :org.shirakumo.fraf.math.vectors)
   (:import-from :slither/render/uniform
-                #:value
+                #:uniform-value
                 #:uniform)
   (:import-from :slither/render/texture
                 #:bind-texture)
@@ -11,7 +11,8 @@
                 #:shader-program
                 #:shader-program-id
                 #:get-uniform
-                #:make-shader-program)
+                #:make-shader-program
+                #:with-bound-shader-program)
   (:import-from :slither/render/shader
                 #:define-vertex-shader
                 #:define-fragment-shader
@@ -19,24 +20,103 @@
                 #:fragment-shader
                 #:shader)
   (:import-from :slither/render/vertex
-                #:quad
-                #:sprite)
+                #:make-quad-vertex-array-object
+                #:make-texture-vertex-array-object
+                #:with-bound-vertex-array)
   (:import-from :slither/utils
                 #:defmemo)
-  (:export #:set-model-matrix
-           #:set-camera-position
+  (:import-from :slither/assets
+                #:defasset)
+  (:export #:set-camera-position
            #:sprite
            #:render
            #:static
            #:quad
            #:renderer-init
-           #:draw-rectangle))
+           #:draw-rectangle
+           #:defshader
+           #:define-vertex-shader
+           #:define-fragment-shader
+           #:define-shader-program))
 
 (in-package #:slither/render)
 
-(defvar *model-matrix* (meye 3))
-(defun set-model-matrix (matrix)
-  (setf *model-matrix* matrix))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defvar *eval-on-init* nil)
+  (defvar *initialized* nil)
+
+  (defun eval-on-init ()
+    (loop for function in *eval-on-init*
+          do (funcall function))
+    (setf *initialized* t))
+
+  (defmacro delay-evaluation (&body body)
+    (if *initialized*
+        `(progn ,@body (values))
+        `(setf *eval-on-init*
+               (append
+                *eval-on-init*
+                (list
+                 (lambda ()
+                   ,@body))))))
+
+  (defmacro defshader (name &key path type)
+    `(progn
+       (defasset ,name ,path)
+       (defvar ,name nil)
+       (delay-evaluation
+         (setf ,name (make-instance ,type :name ',name)))))
+
+  (defmacro define-vertex-shader (name &key path)
+    `(defshader ,name :path ,path :type 'vertex-shader))
+
+  (defmacro define-fragment-shader (name &key path)
+    `(defshader ,name :path ,path :type 'fragment-shader))
+
+  (defmacro define-shader-program (name &key vertex-shader
+                                             fragment-shader
+                                             uniforms)
+    `(progn
+       (defvar ,name nil)
+       (delay-evaluation
+         (setf ,name (make-shader-program :vertex-shader ,vertex-shader
+                                          :fragment-shader ,fragment-shader
+                                          :uniform-symbols ,uniforms)))))
+  (defmacro define-vertex-array-object (name &body body)
+    `(progn
+       (defvar ,name nil)
+       (delay-evaluation
+         (setf ,name (progn ,@body))))))
+
+(define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
+(define-vertex-shader world-space-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space.vert"))
+(define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
+(define-vertex-shader texture-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space.vert"))
+(define-fragment-shader texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
+
+(define-shader-program static-shader-program
+  :vertex-shader static-vertex-shader
+  :fragment-shader color-fragment-shader
+  :uniforms '(color))
+
+(define-shader-program color-shader-program
+  :vertex-shader world-space-vertex-shader
+  :fragment-shader color-fragment-shader
+  :uniforms '(model-matrix
+              view-matrix
+              color))
+
+(define-shader-program texture-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader texture-fragment-shader
+  :uniforms '(model-matrix
+              view-matrix))
+
+(define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
+(define-vertex-array-object texture-vertex-array (make-quad-vertex-array-object))
+
+(defun renderer-init ()
+  (eval-on-init))
 
 (defvar *view-matrix* nil)
 (defun set-camera-position (position &optional (zoom 1.0) (aspect 16/9)) ; TODO: dynamic aspect ratio
@@ -46,105 +126,33 @@
          (mtranslation
           (v* position -1)))))
 
-(defvar *color* nil)
+(defun draw-rectangle (position size color &key (shader-program color-shader-program)
+                                                (vao quad-vertex-array))
+  (with-bound-shader-program shader-program
+    (with-bound-vertex-array vao
+      (setf (uniform-value (get-uniform shader-program 'model-matrix))
+            (nmscale (nmtranslate (meye 3)
+                                  position)
+                     size))
+      (setf (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*)
+      (setf (uniform-value (get-uniform shader-program 'color)) color)
+      (%gl:draw-elements :triangles 6 :unsigned-int 0))))
 
-; TODO: Introduce delay-evaluation
-(define-vertex-shader static :path "./render/shaders/static.vert")
-(define-vertex-shader world-space :path "./render/shaders/world-space.vert")
-(define-fragment-shader color :path "./render/shaders/color.frag")
-(define-vertex-shader texture :path "./render/shaders/world-space.vert")
-(define-fragment-shader sprite :path "./render/shaders/color.frag")
+(defun draw-static (&key (shader-program static-shader-program)
+                         (vao quad-vertex-array))
+  (with-bound-shader-program shader-program
+    (with-bound-vertex-array vao
+      (%gl:draw-elements :triangles 6 :unsigned-int 0))))
 
-(defmemo static-shader-program
-  (make-shader-program :vertex-shader (static)
-                       :fragment-shader (color)
-                       :uniform-symbols '(color)))
-
-(defmemo color-shader-program
-  (make-shader-program :vertex-shader (world-space)
-                       :fragment-shader (color)
-                       :uniform-symbols '(model-matrix
-                                          view-matrix
-                                          color)))
-
-(defmemo sprite-shader-program
-  (make-shader-program :vertex-shader (texture)
-                       :fragment-shader (sprite)
-                       :uniform-symbols '(model-matrix
-                                          view-matrix)))
-
-(defclass renderable ()
-  ((vao
-    :accessor vao
-    :initarg :vao)
-   (shader-program
-    :accessor shader-program
-    :initarg :shader-program)))
-
-(defgeneric render (renderable))
-
-(defmethod render :around ((renderable renderable))
-  (with-slots (shader-program vao) renderable
-    (gl:use-program (shader-program-id shader-program))
-    (gl:bind-vertex-array vao)
-    (call-next-method)
-    (gl:bind-vertex-array 0)
-    (gl:use-program 0)))
-
-(defclass static (renderable) ()
-  (:default-initargs
-   :vao (quad)
-   :shader-program (static-shader-program)))
-
-(defmethod render ((static static))
-  (%gl:draw-elements :triangles 6 :unsigned-int 0))
-
-(defclass quad (renderable) ()
-  (:default-initargs 
-   :vao (quad)
-   :shader-program (color-shader-program)))
-
-(defmethod render :before ((quad quad))
-  (setf (value (get-uniform (shader-program quad) 'model-matrix)) *model-matrix*
-        (value (get-uniform (shader-program quad) 'view-matrix)) *view-matrix*
-        (value (get-uniform (shader-program quad) 'color)) *color*))
-
-(defmethod render ((quad quad))
-  (%gl:draw-elements :triangles 6 :unsigned-int 0))
-
-(defclass sprite (quad)
-  ((texture
-    :accessor sprite-texture
-    :initarg :texture))
-  (:default-initargs
-   :vao (sprite)
-   :shader-program (sprite-shader-program)))
-
-(defmethod render :before ((sprite sprite))
-  (call-next-method)
-  (bind-texture (sprite-texture sprite)))
-
-(defmethod render :after ((sprite sprite))
-  (bind-texture 0)
-  (call-next-method))
-
-(defvar *quad* nil)
-(defvar *sprite* nil)
-
-(defun renderer-init ()
-  (unless *quad*
-    (setf *quad* (make-instance 'quad)))
-  (unless *sprite*
-    (setf *sprite* (make-instance 'sprite))))
-
-(defun draw-rectangle (position size color)
-  (let ((*model-matrix* 
-          (nmscale
-           (nmtranslate
-            (meye 3)
-            position)
-           size))
-        (*color* color))
-    (render *quad*)))
-  
-;(defun draw-texture (position size texture))
+(defun draw-texture (position size texture &key (shader-program texture-shader-program)
+                                                (vao texture-vertex-array))
+  (with-bound-shader-program shader-program
+    (with-bound-vertex-array vao
+      (setf (value (get-uniform shader-program 'model-matrix))
+            (nmscale (nmtranslate (meye 3)
+                                  position)
+                     size)
+            (value (get-uniform shader-program 'view-matrix)) *view-matrix*)
+      (bind-texture texture)
+      (%gl:draw-elements :triangles 6 :unsigned-int 0)
+      (bind-texture 0))))

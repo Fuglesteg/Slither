@@ -1,15 +1,15 @@
 (uiop:define-package #:slither/render/shader
   (:use #:cl)
-  (:export :shader-id
-           :shader
-           :vertex-shader
-           :fragment-shader
-           :compile-shader)
+  (:export #:shader-id
+           #:shader
+           #:vertex-shader
+           #:fragment-shader
+           #:compile-shader)
   (:import-from :slither/utils
-                :defmemo)
+                #:defmemo)
   (:import-from :slither/assets
-                :defasset
-                :asset-data))
+                #:defasset
+                #:asset-data))
 
 (in-package #:slither/render/shader)
 
@@ -47,22 +47,10 @@
     (gl:shader-source id source)
     (gl:compile-shader id)
     #+dev (unless (shader-compiled-successfully-p shader)
-            (error "Shader\"~a\" compiled unsuccessfully::~%~a"
+            (error "Shader \"~a\" compiled unsuccessfully:~%~a"
                    (shader-name shader)
                    (gl:get-shader-info-log id)))))
 
 (defmethod initialize-instance :after ((shader shader) &key)
   (setf (shader-id shader) (gl:create-shader (shader-type shader)))
   (compile-shader shader))
-
-(defmacro defshader (name &key path type)
-  `(progn
-     (defasset (quote ,name) ,path)
-     (defmemo ,name
-       (make-instance ,type :name (quote ,name)))))
-
-(defmacro define-vertex-shader (name &key path)
-  `(defshader ,name :path ,path :type 'vertex-shader))
-
-(defmacro define-fragment-shader (name &key path)
-  `(defshader ,name :path ,path :type 'fragment-shader))

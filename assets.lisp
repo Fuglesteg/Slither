@@ -35,10 +35,10 @@
 #+dev (defun find-file-path-symbol (path)
         (car (rassoc path *file-paths*)))
 
-(defmacro defasset (symbol path)
-  `(progn (register-asset ,symbol ,path)
+(defmacro defasset (name path)
+  `(progn (register-asset ',name ,path)
           #+dev (notify:watch ,path :events '(:modify))
-          #+dev (add-file-path ,symbol ,path)))
+          #+dev (add-file-path ',name ,path)))
 
 #+dev (notify:with-events (file event)
         (declare (ignore event))

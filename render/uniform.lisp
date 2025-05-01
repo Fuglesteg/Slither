@@ -22,7 +22,7 @@
     :accessor uniform-symbol
     :initarg :symbol)))
 
-(defmethod (setf value) (value (uniform uniform))
+(defmethod (setf uniform-value) (value (uniform uniform))
   (setf (uniform-value (uniform-location uniform)) value))
 
 (defmethod (setf uniform-value) ((value float) (uniform-location integer))

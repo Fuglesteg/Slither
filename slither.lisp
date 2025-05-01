@@ -1,11 +1,11 @@
 (uiop:define-package #:slither
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
-        #:org.shirakumo.fraf.math.matrices
-        #:slither/utils
-        #:slither/render
-        #:slither/window
-        #:slither/input)
+        #:org.shirakumo.fraf.math.matrices)
+  (:use-reexport #:slither/utils
+                 #:slither/render
+                 #:slither/window
+                 #:slither/input)
   (:import-from :slither/render/uniform
                 #:uniform-value
                 #:uniform-location)
@@ -40,9 +40,6 @@
   (loop for entity in *entities*
         do (tick entity))
   (gl:flush))
-
-(defun render-entities ()
-  )
 
 ;;; Entities
 

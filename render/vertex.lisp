@@ -5,8 +5,9 @@
                 #:flatten)
   (:import-from :serapeum
                 #:eval-always)
-  (:export :quad
-           :sprite))
+  (:export :make-texture-vertex-array-object
+           :make-quad-vertex-array-object
+           :with-bound-vertex-array))
 
 (in-package :slither/render/vertex)
 
@@ -30,6 +31,12 @@
      ,@body
      ; element-array-buffer should not be unbound
      ,var))
+
+(defmacro with-bound-vertex-array (vao &body body)
+  `(progn
+     (gl:bind-vertex-array ,vao)
+     ,@body
+     (gl:bind-vertex-array 0)))
 
 (defun cffi-type-of-vector (vector)
   (lisp-type->cffi-type (type-of (elt vector 0))))
@@ -78,7 +85,7 @@
                  1)
              (recursive-length rest))))))
 
-(defmacro define-vertex-array-object (name &key vertices
+(defmacro define-vertex-array-object-generator (name &key vertices
                                                 indices
                                                 (usage-type :static-draw))
   `(defun ,name ()
@@ -107,14 +114,14 @@
                      collect `(gl:enable-vertex-attrib-array ,i)
                      sum vertex-section-size into current-pointer))))))
 
-(define-vertex-array-object quad
+(define-vertex-array-object-generator make-quad-vertex-array-object
   :vertices (((1.0 1.0))
              ((1.0 -1.0))
              ((-1.0 -1.0))
              ((-1.0 1.0)))
   :indices (0 1 3 1 2 3))
 
-(define-vertex-array-object sprite
+(define-vertex-array-object-generator make-texture-vertex-array-object
   :vertices (((1.0 1.0)
               (1.0 1.0))
              ((1.0 -1.0)
