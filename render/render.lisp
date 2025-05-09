@@ -7,6 +7,8 @@
                 #:uniform)
   (:import-from :slither/render/texture
                 #:with-bound-texture)
+  (:import-from :slither/render/array-texture
+                #:with-bound-array-texture)
   (:import-from :slither/render/shader-program
                 #:shader-program
                 #:shader-program-id
@@ -114,6 +116,15 @@
   :uniforms '(model-matrix
               view-matrix))
 
+(define-fragment-shader array-texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/array-texture.frag"))
+
+(define-shader-program array-texture-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader array-texture-fragment-shader
+  :uniforms '(model-matrix
+              view-matrix
+              texture-index))
+
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
@@ -160,10 +171,17 @@
       (gl:active-texture :texture0)
       (with-bound-texture texture
         (%gl:draw-elements :triangles 6 :unsigned-int 0)))))
+
+(defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
+                                                                  (vao texture-vertex-array))
+  (with-bound-shader-program shader-program
+    (with-bound-vertex-array vao
+      (setf (uniform-value (get-uniform shader-program 'model-matrix))
             (nmscale (nmtranslate (meye 3)
                                   position)
                      size)
-            (value (get-uniform shader-program 'view-matrix)) *view-matrix*)
-      (bind-texture texture)
-      (%gl:draw-elements :triangles 6 :unsigned-int 0)
-      (bind-texture 0))))
+            (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*
+            (uniform-value (get-uniform shader-program 'texture-index)) index)
+      (gl:active-texture :texture0)
+      (with-bound-array-texture array-texture
+        (%gl:draw-elements :triangles 6 :unsigned-int 0)))))

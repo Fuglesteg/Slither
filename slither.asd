@@ -19,6 +19,7 @@
                 :components
                 ((:file "uniform")
                  (:file "texture")
+                 (:file "array-texture")
                  (:file "shader")
                  (:file "shader-program")
                  (:file "vertex")
