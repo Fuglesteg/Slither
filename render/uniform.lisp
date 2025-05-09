@@ -43,6 +43,9 @@
 (defmethod (setf uniform-value) ((mat mat3) (uniform-location integer))
   (gl:uniform-matrix-3fv uniform-location (marr3 mat)))
 
+(defmethod (setf uniform-value) ((value integer) (uniform-location integer))
+  (%gl:uniform-1i uniform-location value))
+
 (defclass uniform-wrapper (uniform)
   ((value
     :reader value

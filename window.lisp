@@ -8,6 +8,8 @@
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export #:frame
            #:*dt*
+           #:*window-width*
+           #:*window-height*
            #:fps
            #:with-event-loop
            #:with-window))
@@ -27,7 +29,12 @@
     (:press (key-pressed key (frame)))
     (:release (key-released key))))
 
+(defvar *window-height* nil)
+(defvar *window-width* nil)
+
 (defmethod glfw:window-resized ((window game-window) width height)
+  (setf *window-width* width 
+        *window-height* height)
   (gl:viewport 0 0 width height))
 
 (defvar *dt* 0)

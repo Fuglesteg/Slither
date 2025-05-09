@@ -20,6 +20,9 @@
            #:add-entity
            #:base-uniform-location
            #:uniform-size
+           #:transform-position
+           #:transform-size
+           #:transform-rotation
            #:position
            #:rotation))
 
@@ -72,7 +75,7 @@
 
 (defgeneric tick (entity))
 
-(defmethod tick ((entity entity))
+(defmethod tick :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-tick behavior entity)))
 
@@ -127,7 +130,7 @@
 
 (defgeneric behavior-tick (behavior entity))
 (defmethod behavior-tick ((behavior behavior) (entity entity)))
-  
+
 (defgeneric behavior-start (behavior entity))
 (defmethod behavior-start ((behavior behavior) (entity entity)))
 
@@ -147,7 +150,7 @@
 (defbehavior rectangle
     ((color
       :accessor rectangle-color
-      :initform (vec4 255 255 255 255)
+      :initform (vec4 255 0 0 255)
       :initarg :color))
   (:tick (rectangle entity)
    (with-accessors ((position transform-position)
@@ -198,14 +201,14 @@
       :initarg :zoom))
   (:tick (camera entity)
    (with-accessors ((zoom camera-zoom)) camera
-   (when (key-held-p :i)
-     (incf zoom
-           *dt*))
-   (when (and (key-held-p :o)
-              (> zoom 0.01))
-     (decf zoom
-           *dt*))
-   (set-camera-position (transform-position entity) zoom))))
+     (when (key-held-p :i)
+       (incf zoom
+             *dt*))
+     (when (and (key-held-p :o)
+                (> zoom 0.01))
+       (decf zoom
+             *dt*))
+     (set-camera-position (transform-position entity) zoom))))
 
 (defbehavior follow
     ((target

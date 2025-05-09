@@ -5,9 +5,11 @@
                 #:flatten)
   (:import-from :serapeum
                 #:eval-always)
-  (:export :make-texture-vertex-array-object
-           :make-quad-vertex-array-object
-           :with-bound-vertex-array))
+  (:export #:make-texture-vertex-array-object
+           #:make-quad-vertex-array-object
+           #:with-bound-vertex-array
+           #:with-bound-array-buffer
+           #:send-buffer-data))
 
 (in-package :slither/render/vertex)
 
@@ -18,12 +20,16 @@
      (gl:bind-vertex-array 0)
      ,var))
 
-(defmacro with-array-buffer (var &body body)
-  `(let ((,var (gl:gen-buffer)))
-     (gl:bind-buffer :array-buffer ,var)
+(defmacro with-buffer (buffer target &body body)
+  `(let ((,buffer (gl:gen-buffer)))
+     (gl:bind-buffer ,target ,buffer)
      ,@body
-     (gl:bind-buffer :array-buffer 0)
-     ,var))
+     (gl:bind-buffer ,target 0)
+     ,buffer))
+
+(defmacro with-array-buffer (buffer &body body)
+  `(with-buffer ,buffer :array-buffer
+     ,@body))
 
 (defmacro with-element-array-buffer (var &body body)
   `(let ((,var (gl:gen-buffer)))
@@ -37,6 +43,16 @@
      (gl:bind-vertex-array ,vao)
      ,@body
      (gl:bind-vertex-array 0)))
+
+(defmacro with-bound-buffer (buffer target &body body)
+  `(progn
+     (gl:bind-buffer ,target ,buffer)
+     ,@body
+     (gl:bind-buffer ,target 0)))
+
+(defmacro with-bound-array-buffer (buffer &body body)
+  `(with-bound-buffer ,buffer :array-buffer
+     ,@body))
 
 (defun cffi-type-of-vector (vector)
   (lisp-type->cffi-type (type-of (elt vector 0))))
@@ -114,7 +130,7 @@
                      collect `(gl:enable-vertex-attrib-array ,i)
                      sum vertex-section-size into current-pointer))))))
 
-(define-vertex-array-object-generator make-quad-vertex-array-object
+ (define-vertex-array-object-generator make-quad-vertex-array-object
   :vertices (((1.0 1.0))
              ((1.0 -1.0))
              ((-1.0 -1.0))
@@ -131,3 +147,7 @@
              ((-1.0 1.0)
               (0.0 1.0)))
   :indices (0 1 3 1 2 3))
+
+(defun make-uniform-buffer (data)
+  (with-buffer buffer :uniform-buffer
+    (gl:buffer-data buffer :uniform-buffer data)))

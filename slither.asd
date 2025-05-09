@@ -6,6 +6,7 @@
   :depends-on (#:cl-opengl
                #:3d-math
                #:glfw
+               #:pngload
                #:static-vectors
                (:feature :dev #:file-notify)
                #:alexandria

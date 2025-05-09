@@ -103,6 +103,24 @@
   (gl:get-uniform-location (shader-program-id program)
                            (symbol->camel-case uniform-symbol)))
 
+(defmethod shader-program-uniform-block-location ((program shader-program) (uniform-symbol symbol))
+  (gl:get-uniform-block-index (shader-program-id program)
+                              (symbol->camel-case uniform-symbol)))
+
+(defmethod shader-program-bind-uniform-block ((program shader-program)
+                                              (uniform-block-index integer)
+                                              (buffer-id integer))
+  (%gl:uniform-block-binding (shader-program-id program)
+                             uniform-block-index
+                             buffer-id))
+
+(defmethod shader-program-bind-uniform-block ((program shader-program)
+                                              (uniform-block-index integer)
+                                              (buffer-id integer))
+  (%gl:bind-buffer-base (shader-program-id program)
+                             uniform-block-index
+                             buffer-id))
+
 (defun make-uniform (program uniform-symbol)
   (make-instance 'uniform
                  :symbol uniform-symbol

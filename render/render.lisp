@@ -6,7 +6,7 @@
                 #:uniform-value
                 #:uniform)
   (:import-from :slither/render/texture
-                #:bind-texture)
+                #:with-bound-texture)
   (:import-from :slither/render/shader-program
                 #:shader-program
                 #:shader-program-id
@@ -89,15 +89,14 @@
          (setf ,name (progn ,@body))))))
 
 (define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
-(define-vertex-shader world-space-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space.vert"))
 (define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
-(define-vertex-shader texture-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space.vert"))
-(define-fragment-shader texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
 
 (define-shader-program static-shader-program
   :vertex-shader static-vertex-shader
   :fragment-shader color-fragment-shader
   :uniforms '(color))
+
+(define-vertex-shader world-space-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space.vert"))
 
 (define-shader-program color-shader-program
   :vertex-shader world-space-vertex-shader
@@ -106,6 +105,9 @@
               view-matrix
               color))
 
+(define-vertex-shader texture-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/world-space-texture.vert"))
+(define-fragment-shader texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/texture.frag"))
+
 (define-shader-program texture-shader-program
   :vertex-shader texture-vertex-shader
   :fragment-shader texture-fragment-shader
@@ -113,13 +115,15 @@
               view-matrix))
 
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
-(define-vertex-array-object texture-vertex-array (make-quad-vertex-array-object))
+(define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
 (defun renderer-init ()
-  (eval-on-init))
+  (eval-on-init)
+  (gl:enable :blend)
+  (gl:blend-func :src-alpha :one-minus-src-alpha))
 
 (defvar *view-matrix* nil)
-(defun set-camera-position (position &optional (zoom 1.0) (aspect 16/9)) ; TODO: dynamic aspect ratio
+(defun set-camera-position (position &optional (zoom 1.0) (aspect (/ slither/window:*window-width* slither/window:*window-height*)))
   (setf *view-matrix*
         (nm*
          (mscaling (vec2 (/ zoom aspect) zoom))
@@ -148,7 +152,14 @@
                                                 (vao texture-vertex-array))
   (with-bound-shader-program shader-program
     (with-bound-vertex-array vao
-      (setf (value (get-uniform shader-program 'model-matrix))
+      (setf (uniform-value (get-uniform shader-program 'model-matrix))
+            (nmscale (nmtranslate (meye 3)
+                                  position)
+                     size)
+            (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*)
+      (gl:active-texture :texture0)
+      (with-bound-texture texture
+        (%gl:draw-elements :triangles 6 :unsigned-int 0)))))
             (nmscale (nmtranslate (meye 3)
                                   position)
                      size)

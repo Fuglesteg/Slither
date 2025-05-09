@@ -24,8 +24,25 @@
 (defun add-asset (symbol data)
   (alist-push-or-replace symbol data *assets*))
 
-(defun register-asset (symbol path)
-  (add-asset symbol (uiop:read-file-string path)))
+(deftype asset-type ()
+  '(member :text :bytes :png))
+
+(defun read-file-bytes (pathname)
+  (with-open-file (stream pathname
+                          :element-type '(unsigned-byte 8))
+    (loop for byte = (read-byte stream nil)
+          while byte
+          collect byte)))
+                          
+
+(declaim (ftype (function (symbol (or pathname string) &optional asset-type) t) register-asset))
+(defun register-asset (symbol path &optional (asset-type :text))
+  (add-asset symbol (case asset-type
+                      (:text (uiop:read-file-string path))
+                      (:bytes (read-file-bytes path))
+                      (:png (pngload:load-file path
+                                               :flatten t
+                                               :flip-y t)))))
 
 #+dev (defvar *file-paths* nil)
 #+dev (defun find-file-path (symbol)
@@ -35,8 +52,8 @@
 #+dev (defun find-file-path-symbol (path)
         (car (rassoc path *file-paths*)))
 
-(defmacro defasset (name path)
-  `(progn (register-asset ',name ,path)
+(defmacro defasset (name path &optional (asset-type :text))
+  `(progn (register-asset ',name ,path ,asset-type)
           #+dev (notify:watch ,path :events '(:modify))
           #+dev (add-file-path ',name ,path)))
 

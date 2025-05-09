@@ -9,7 +9,8 @@
            :random-position
            :random-color
            :rotation->vec2
-           :random-float))
+           :random-float
+           :clamp))
 
 (in-package #:slither/utils)
 
@@ -21,6 +22,12 @@
            (setf ,memo
                  (progn ,@body)))
          ,memo))))
+
+(defun clamp (value min max)
+  (cond
+    ((< value min) min)
+    ((> value max) max)
+    (t value)))
 
 (defun symbol->camel-case (symbol)
    (loop for character across (string symbol)
