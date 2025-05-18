@@ -47,10 +47,13 @@
        (progn ,@body)
      (continue () :report "Continue")))
 
-(defun rotation->vec2 (rotation)
-  (vscale (vec2 (cos rotation)
-                (sin rotation))
-          1))
+(defun rotation->vec2 (degrees)
+  (let ((radians (degrees->radians degrees)))
+    (vec2 (cos radians)
+          (sin radians))))
+
+(defun degrees->radians (degrees)
+  (* degrees (/ pi 180)))
 
 (defun random-float (&optional (range 1) (precision 10))
   (float (* (/ (random precision) precision) range)))
