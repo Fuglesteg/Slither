@@ -6,11 +6,12 @@
            :symbol->camel-case
            :function-symbol->global-variable-symbol
            :defmemo
-           :random-position
            :random-color
            :rotation->vec2
            :random-float
-           :clamp))
+           :random-element
+           :clamp
+           :smoothstep))
 
 (in-package #:slither/utils)
 
@@ -28,6 +29,10 @@
     ((< value min) min)
     ((> value max) max)
     (t value)))
+
+(defun smoothstep (value edge0 edge1)
+  (let ((value (clamp (/ (- value edge0) (- edge1 edge0)) 0 1)))
+    (* value value (- 3.0 (* 2.0 value)))))
 
 (defun symbol->camel-case (symbol)
    (loop for character across (string symbol)
@@ -75,11 +80,3 @@
 
 (defun random-color ()
   (vec3 (random-float) (random-float) (random-float)))
-
-(defun random-position (&key (min (vec2 0.0)) (max (vec2 100.0)))
-  (with-vec (min-x min-y) min
-    (with-vec (max-x max-y) max
-      (vec2 (random-float (+ (- max-x min-x)
-                             min-x))
-            (random-float (+ (- max-y min-y)
-                             min-y))))))
