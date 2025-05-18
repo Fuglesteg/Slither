@@ -6,8 +6,10 @@
                 #:uniform-value
                 #:uniform)
   (:import-from :slither/render/texture
+                #:texture
                 #:with-bound-texture)
   (:import-from :slither/render/array-texture
+                #:array-texture
                 #:with-bound-array-texture)
   (:import-from :slither/render/shader-program
                 #:shader-program
@@ -30,16 +32,19 @@
   (:import-from :slither/assets
                 #:defasset)
   (:export #:set-camera-position
-           #:sprite
-           #:render
-           #:static
-           #:quad
+           #:screen-space-position
+           #:screen-space-scale
            #:renderer-init
            #:draw-rectangle
+           #:draw-static
+           #:draw-texture
+           #:draw-array-texture
            #:defshader
            #:define-vertex-shader
            #:define-fragment-shader
-           #:define-shader-program))
+           #:define-shader-program
+           #:define-texture
+           #:define-array-texture))
 
 (in-package #:slither/render)
 
@@ -88,7 +93,24 @@
     `(progn
        (defvar ,name nil)
        (delay-evaluation
-         (setf ,name (progn ,@body))))))
+         (setf ,name (progn ,@body)))))
+  
+  (defmacro define-texture (name file)
+    `(progn
+       (defvar ,name nil)
+       (defasset ,name ,file :png) 
+       (delay-evaluation
+         (setf ,name (make-instance 'texture :asset ',name)))))
+
+  (defmacro define-array-texture (name file &key width height)
+    `(progn
+       (defvar ,name nil)
+       (defasset ,name ,file :png) 
+       (delay-evaluation
+         (setf ,name (make-instance 'array-texture
+                                    :asset ',name
+                                    :width ,width
+                                    :height ,height))))))
 
 (define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
 (define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
@@ -114,7 +136,8 @@
   :vertex-shader texture-vertex-shader
   :fragment-shader texture-fragment-shader
   :uniforms '(model-matrix
-              view-matrix))
+              view-matrix
+              texture-scale))
 
 (define-fragment-shader array-texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/array-texture.frag"))
 
@@ -129,6 +152,7 @@
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
 (defun renderer-init ()
+  (set-camera-position (vec2 0 0))
   (eval-on-init)
   (gl:enable :blend)
   (gl:blend-func :src-alpha :one-minus-src-alpha))
@@ -140,6 +164,13 @@
          (mscaling (vec2 (/ zoom aspect) zoom))
          (mtranslation
           (v* position -1)))))
+
+(defun screen-space-position (vector)
+  (m* (minv *view-matrix*) vector))
+
+(defun screen-space-scale (vector)
+  (v/ vector (vec2 (mcref *view-matrix* 0 0)
+                   (mcref *view-matrix* 1 1))))
 
 (defun draw-rectangle (position size color &key (shader-program color-shader-program)
                                                 (vao quad-vertex-array))
@@ -178,9 +209,8 @@
   (with-bound-shader-program shader-program
     (with-bound-vertex-array vao
       (setf (uniform-value (get-uniform shader-program 'model-matrix))
-            (nmscale (nmtranslate (meye 3)
-                                  position)
-                     size)
+            (nm* (mtranslation position)
+                 (mscaling size))
             (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*
             (uniform-value (get-uniform shader-program 'texture-index)) index)
       (gl:active-texture :texture0)
