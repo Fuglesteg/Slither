@@ -1,10 +1,6 @@
 (defpackage #:slither/window
   (:use #:cl 
         #:slither/utils)
-  (:import-from :slither/input
-                #:key-pressed
-                #:key-released
-                #:set-mouse-position)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export #:frame
            #:*dt*
@@ -20,14 +16,6 @@
   (:default-initargs
    :width 250 :height 250
    :title "Slither"))
-
-(defmethod glfw:mouse-moved ((window game-window) x y)
-  (set-mouse-position x y))
-
-(defmethod glfw:key-changed ((window game-window) key scan-code action modifiers)
-  (case action
-    (:press (key-pressed key (frame)))
-    (:release (key-released key))))
 
 (defvar *window-height* nil)
 (defvar *window-width* nil)
@@ -53,8 +41,8 @@
       (when connection
         (micros::handle-requests connection t)))))
 
-(defparameter *window* nil)
-(defparameter *frame* 0)
+(defvar *window* nil)
+(defvar *frame* 0)
 (defun frame ()
   *frame*)
 
@@ -65,7 +53,11 @@
 (defun open-window ()
   (glfw:init)
   (unless *window*
-    (setf *window* (make-instance 'game-window))))
+    (let ((window (make-instance 'game-window)))
+      (destructuring-bind (width height) (glfw:framebuffer-size window)
+        (setf *window* window
+              *window-width* width
+              *window-height* height)))))
 
 (defun close-window ()
   (glfw:destroy *window*)
