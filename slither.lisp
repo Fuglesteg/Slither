@@ -18,23 +18,39 @@
            #:defentity
            #:defbehavior
            #:add-entity
+           #:append-entity
+           #:remove-entity
            #:base-uniform-location
            #:uniform-size
            #:transform-position
            #:transform-size
            #:transform-rotation
            #:position
-           #:rotation))
+           #:rotation
+           #:size
+           #:entity-find-behavior
+           #:entities-find-entity
+           #:entities-find-entities
+           #:transform-distance))
 
 (in-package #:slither)
 
 (defvar *entities* '())
 
+(defun entities-find-entity (entity-type)
+  (find entity-type *entities*
+        :key #'type-of))
+
+(defun entities-find-entities (entity-type)
+  (remove-if-not (lambda (entity)
+                   (typep entity entity-type))
+                 *entities*))
+
 (defun start-game (&optional start-procedure)
   (with-window
+    (renderer-init)
     (when start-procedure
       (funcall start-procedure))
-    (renderer-init)
     (with-event-loop
       (update-entities))))
 
@@ -51,8 +67,14 @@
     (push entity *entities*)
     (start entity)))
 
-(defun remove-entity (entity)
-  (setf *entities* (remove entity *entities*)))
+(defun append-entity (&rest entities)
+  (setf *entities* (append *entities* entities))
+  (dolist (entity entities)
+    (start entity)))
+
+(defun remove-entity (&rest entities)
+  (dolist (entity entities)
+    (setf *entities* (remove entity *entities*))))
 
 (defclass transform ()
   ((position
@@ -60,7 +82,7 @@
     :accessor transform-position
     :initarg :position)
    (size
-    :initform (vec2 100.0 100.0)
+    :initform (vec2 1.0 1.0)
     :accessor transform-size
     :initarg :size)
    (rotation
@@ -68,12 +90,17 @@
     :accessor transform-rotation
     :initarg :rotation)))
 
+(defmethod transform-distance ((transform1 transform) (transform2 transform))
+  (vdistance (transform-position transform1)
+             (transform-position transform2)))
+
 (defclass entity (transform) 
   ((behaviors
     :accessor entity-behaviors
     :initarg :behaviors)))
 
 (defgeneric tick (entity))
+(defmethod tick ((entity entity)))
 
 (defmethod tick :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
@@ -84,42 +111,35 @@
 (defmethod start :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (behavior-start behavior entity)))
+
 (defmethod start ((entity entity)))
+
+(defmethod entity-find-behavior ((entity entity) (behavior symbol))
+  (find behavior (entity-behaviors entity)
+        :key #'type-of)) 
 
 (defmacro defentity (name slots &body sections)
   `(progn
      ,@(loop for (keyword . arguments) in sections
-             with renderer = nil
-             when (string= keyword :tick)
-             collect (destructuring-bind (&optional entity-symbol . forms) arguments
-                       `(defmethod tick ((,entity-symbol ,name))
-                        ,@forms)) into methods
-             when (string= keyword :start)
-             collect (destructuring-bind (&optional entity-symbol . forms) arguments
-                       `(defmethod start ((,entity-symbol ,name))
-                          ,@forms)) into methods
              when (string= keyword :behaviors)
              append arguments into behaviors
-             when (string= keyword :uniforms)
-             append (loop for uniform in arguments
-                           for i from 0
-                           collect `(defmethod (setf ,uniform) :after (value (,name ,name))
-                                      (with-slots (shader-program) ,name
-                                        (set-uniform-value shader-program ,i value))))
-                 into methods
-             and
-             collect `(defmethod uniform-size ((,name ,name))
-                       ,(length arguments))
-                 into methods
-             and
-             collect '(base-uniform-location
-                      :initarg :base-uniform-location
-                      :initform 0
-                      :accessor base-uniform-location)
-                 into extra-slots
+             else ; Methods
+             collect (cond
+                       ((string= keyword :tick)
+                        (destructuring-bind (&optional entity-symbol . forms) arguments
+                           `(defmethod tick ((,entity-symbol ,name))
+                              ,@forms)))
+                       ((string= keyword :start)
+                        (destructuring-bind (&optional entity-symbol . forms) arguments
+                           `(defmethod start ((,entity-symbol ,name))
+                              ,@forms)))
+                       (t
+                        (destructuring-bind ((entity-symbol . method-arguments) . forms) arguments
+                           `(defmethod ,keyword ((,entity-symbol ,name) ,@method-arguments)
+                              ,@forms)))) into methods
              finally (return
                        `((defclass ,name (entity)
-                           (,@slots ,@extra-slots)
+                           ,slots
                            (:default-initargs
                             :behaviors (list ,@behaviors)))
                          ,@methods)))))
@@ -137,15 +157,20 @@
 (defmacro defbehavior (name slots &body sections)
   `(progn
      (defclass ,name (behavior) ,slots)
-     ,@(loop for (keyword . arguments) in sections
-             when (string= keyword :tick)
-             collect (destructuring-bind ((&optional behavior entity) . tick-body) arguments
-                       `(defmethod behavior-tick ((,behavior ,name) (,entity entity))
-                         ,@tick-body))
-             when (string= keyword :start)
-             collect (destructuring-bind ((&optional behavior entity) . start-body) arguments
-                       `(defmethod behavior-start ((,behavior ,name) (,entity entity))
-                         ,@start-body)))))
+     ,@(loop for (keyword-or-symbol . arguments) in sections
+             collect
+                (cond 
+                  ((string= keyword-or-symbol :tick)
+                   (destructuring-bind ((&optional behavior entity) . tick-body) arguments
+                     `(defmethod behavior-tick ((,behavior ,name) (,entity entity))
+                        ,@tick-body)))
+                  ((string= keyword-or-symbol :start)
+                   (destructuring-bind ((&optional behavior entity) . start-body) arguments
+                     `(defmethod behavior-start ((,behavior ,name) (,entity entity))
+                        ,@start-body)))
+                  (t (destructuring-bind ((&optional behavior entity . method-arguments) . body) arguments
+                       `(defmethod ,keyword-or-symbol ((,behavior ,name) (,entity entity) ,@method-arguments)
+                          ,@body)))))))
 
 (defbehavior rectangle
     ((color

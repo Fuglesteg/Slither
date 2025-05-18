@@ -14,6 +14,8 @@
   :serial t
   :components ((:file "utils")
                (:file "assets")
+               (:file "window")
+               (:file "input")
                (:module "render"
                 :serial t
                 :components
@@ -24,6 +26,4 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
-               (:file "input")
-               (:file "window")
                (:file "slither")))
