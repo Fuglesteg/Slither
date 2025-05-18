@@ -160,15 +160,16 @@
       (%gl:draw-elements :triangles 6 :unsigned-int 0))))
 
 (defun draw-texture (position size texture &key (shader-program texture-shader-program)
-                                                (vao texture-vertex-array))
+                                                (vao texture-vertex-array)
+                                                (texture-scale (vec2 1.0 1.0)))
   (with-bound-shader-program shader-program
     (with-bound-vertex-array vao
       (setf (uniform-value (get-uniform shader-program 'model-matrix))
-            (nmscale (nmtranslate (meye 3)
-                                  position)
-                     size)
-            (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*)
-      (gl:active-texture :texture0)
+            (nm* (mtranslation position)
+                 (mscaling size))
+            (uniform-value (get-uniform shader-program 'view-matrix)) *view-matrix*
+            (uniform-value (get-uniform shader-program 'texture-scale)) texture-scale)
+    (gl:active-texture :texture0)
       (with-bound-texture texture
         (%gl:draw-elements :triangles 6 :unsigned-int 0)))))
 
