@@ -42,9 +42,6 @@
         (micros::handle-requests connection t)))))
 
 (defvar *window* nil)
-(defvar *frame* 0)
-(defun frame ()
-  *frame*)
 
 (defun fps ()
   (unless (= *dt* 0)
@@ -61,6 +58,7 @@
 
 (defun close-window ()
   (glfw:destroy *window*)
+  (setf *window* nil)
   (glfw:shutdown))
 
 (defmacro with-window (&body body)
@@ -71,14 +69,11 @@
        (close-window))))
 
 (defmacro with-event-loop (&body body)
-  `(with-window
-       (loop unless (glfw:should-close-p *window*)
-             do (progn
-                  (incf *frame*)
-                  #+micros (let ((*features* `(,@*features* :in-game-loop)))
-                               (read-repl))
-                  (calculate-dt)
-                  (glfw:poll-events)
-                  (continuable
-                    ,@body)
-                  (glfw:swap-buffers *window*)))))
+  `(loop until (glfw:should-close-p *window*)
+         do (progn
+              #+micros (read-repl)
+              (calculate-dt)
+              (glfw:poll-events)
+              (continuable
+                ,@body)
+              (glfw:swap-buffers *window*))))

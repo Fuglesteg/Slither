@@ -48,9 +48,9 @@
 
 (defun start-game (&optional start-procedure)
   (with-window
-    (renderer-init)
     (when start-procedure
       (funcall start-procedure))
+    (renderer-init)
     (with-event-loop
       (update-entities))))
 
