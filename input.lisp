@@ -52,4 +52,4 @@
   (v/ *mouse-position* (vec2 *window-width* *window-height*)))
 
 (defun normalized-screen-space-mouse-position ()
-  (v- (normalized-mouse-position) 0.5))
+  (v* (v- (normalized-mouse-position) 0.5) (vec2 1 -1) 2))
