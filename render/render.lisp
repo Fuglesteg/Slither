@@ -159,6 +159,7 @@
 
 (defvar *view-matrix* nil)
 (defun set-camera-position (position &optional (zoom 1.0) (aspect (/ slither/window:*window-width* slither/window:*window-height*)))
+  (assert (> zoom 0))
   (setf *view-matrix*
         (nm*
          (mscaling (vec2 (/ zoom aspect) zoom))
