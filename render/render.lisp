@@ -217,3 +217,44 @@
       (gl:active-texture :texture0)
       (with-bound-array-texture array-texture
         (%gl:draw-elements :triangles 6 :unsigned-int 0)))))
+
+(defvar *drawcall-buffer*
+  (make-array 1024
+              :element-type 'cons
+              :initial-element (cons nil nil)
+              :fill-pointer 0
+              :adjustable nil))
+
+(defun make-drawcall-key (&key shader-program-id texture-id (layer 0) (depth 0))
+  (let ((offset 0) (key 0))
+    (flet ((key-insert-field (value size)
+             (setf key (dpb value (byte size offset) key))
+             (incf offset size)))
+      (key-insert-field shader-program-id 8)
+      (key-insert-field texture-id 8)
+      (key-insert-field layer 8)
+      (key-insert-field depth 8)
+      key)))
+
+(defun get-drawcall-key (key)
+  (values
+   (ldb (byte 8 0) key)
+   (ldb (byte 8 8) key)
+   (ldb (byte 8 16) key)
+   (ldb (byte 8 24) key)))
+
+(defun make-drawcall (&key shader-program-id texture-id (layer 0) (depth 0) data)
+  (vector-push (cons (make-drawcall-key :shader-program-id shader-program-id
+                                        :texture-id texture-id 
+                                        :layer layer
+                                        :depth depth)
+                     data)
+               *drawcall-buffer*))
+
+(defun sort-drawcall-buffer ()
+  (setf *drawcall-buffer* (sort *drawcall-buffer*
+                                #'>
+                                :key #'car))))
+
+(defun reset-drawcall-buffer ()
+  (setf (fill-pointer *drawcall-buffer*) 0))
