@@ -1,4 +1,5 @@
 (use-modules (guix packages)
+             (gnu packages linux)
              (gnu packages lisp)
              (gnu packages lisp-xyz)
              (gnu packages text-editors))
@@ -9,4 +10,5 @@
                                     (map cadr
                                          (package-development-inputs slither)))
                             (list sbcl-micros
+                                  alsa-lib
                                   sbcl)))
