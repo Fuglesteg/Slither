@@ -52,7 +52,8 @@
     (renderer-init)
     (audio-init)
     (with-event-loop
-      (update-entities))))
+      (update-entities)
+      (slither/input::input-poll))))
 
 (defun update-entities ()
   (gl:clear :color-buffer)

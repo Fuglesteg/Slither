@@ -1,4 +1,4 @@
-(defpackage #:slither/input
+(uiop:define-package #:slither/input
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
@@ -9,33 +9,62 @@
   (:export :key-held-p
            :mouse-position
            :normalized-mouse-position
-           :key-pressed
-           :key-released
+           :key-press
+           :key-release
            :set-mouse-position
-           :normalized-screen-space-mouse-position))
+           :normalized-screen-space-mouse-position
+           :key-pressed-p
+           :key-released-p))
 
 (in-package #:slither/input)
 
 (defparameter *keys* '())
 
+(defun (setf key-state) (new-value key)
+  (setf (cdr (assoc key *keys*)) new-value))
+
+(defun key-state (key)
+  (cdr (assoc key *keys*)))
+
 (defun key-held-p (key)
-  (not (null (find key *keys*))))
+  (let ((key-state (key-state key)))
+    (or (eq key-state :held)
+        (eq key-state :pressed))))
 
 (defmethod glfw:key-changed ((window game-window) key scan-code action modifiers)
   (case action
-    (:press (key-pressed key))
-    (:release (key-released key))))
+    (:press (key-press key))
+    (:release (key-release key))))
 
 (defmethod glfw:mouse-button-changed ((window game-window) button action modifiers)
   (case action
-    (:press (key-pressed button))
-    (:release (key-released button))))
+    (:press (key-press button))
+    (:release (key-release button))))
 
-(defun key-pressed (key)
-  (pushnew key *keys*))
+(defun key-press (key)
+  (push (cons key :pressed) *keys*))
 
-(defun key-released (key)
-  (setf *keys* (remove key *keys*)))
+(defun key-pressed-p (key)
+  (eq :pressed (key-state key)))
+
+(defun key-release (key)
+  (setf (key-state key) :released))
+
+(defun key-released-p (key)
+  (eq :released (key-state key)))
+
+(defun input-poll ()
+  (setf *keys*
+        (mapcar (lambda (key-data)
+                  (destructuring-bind (key . state) key-data
+                    (if (eq state :pressed)
+                        (cons key :held)
+                        key-data)))
+                (remove-if (lambda (key-data)
+                             (destructuring-bind (key . state) key-data
+                               (declare (ignore key))
+                               (eq state :released)))
+                           *keys*))))
 
 (defparameter *mouse-position* (vec2 0 0))
 
