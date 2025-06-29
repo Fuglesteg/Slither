@@ -1,6 +1,7 @@
 (uiop:define-package :slither/assets
   (:use #:cl)
   #+dev(:local-nicknames (:notify :org.shirakumo.file-notify))
+  (:local-nicknames (:harmony :org.shirakumo.fraf.harmony))
   (:export #:asset-data
            #:asset-reload
            #:defasset))
@@ -24,25 +25,26 @@
 (defun add-asset (symbol data)
   (alist-push-or-replace symbol data *assets*))
 
-(deftype asset-type ()
-  '(member :text :bytes :png))
-
 (defun read-file-bytes (pathname)
   (with-open-file (stream pathname
                           :element-type '(unsigned-byte 8))
     (loop for byte = (read-byte stream nil)
           while byte
           collect byte)))
-                          
+
+(deftype asset-type ()
+  '(member :text :bytes :png :sound))
 
 (declaim (ftype (function (symbol (or pathname string) &optional asset-type) t) register-asset))
 (defun register-asset (symbol path &optional (asset-type :text))
-  (add-asset symbol (case asset-type
-                      (:text (uiop:read-file-string path))
-                      (:bytes (read-file-bytes path))
-                      (:png (pngload:load-file path
-                                               :flatten t
-                                               :flip-y t)))))
+  (let ((path (merge-pathnames path (or *default-pathname-defaults*))))
+    (add-asset symbol (case asset-type
+                        (:text (uiop:read-file-string path))
+                        (:bytes (read-file-bytes path))
+                        (:png (pngload:load-file path
+                                                 :flatten t
+                                                 :flip-y t))
+                        (:sound (harmony:create path))))))
 
 #+dev (defvar *file-paths* nil)
 #+dev (defun find-file-path (symbol)

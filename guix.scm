@@ -8,12 +8,14 @@
 (define slither
   (package
    (name "slither")
-   (version "0.0.2")
+   (version "0.0.3")
    (source (local-file (dirname (current-filename)) #:recursive? #t))
    (build-system asdf-build-system/sbcl)
    (inputs (list
             sbcl-cl-opengl
             sbcl-3d-math
+            sbcl-harmony
+            sbcl-cl-mixed
             sbcl-glfw
             sbcl-static-vectors
             sbcl-file-notify

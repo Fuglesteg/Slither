@@ -5,6 +5,7 @@
   (:use-reexport #:slither/utils
                  #:slither/render
                  #:slither/window
+                 #:slither/audio
                  #:slither/input)
   (:import-from :slither/render/uniform
                 #:uniform-value
@@ -46,11 +47,10 @@
                    (typep entity entity-type))
                  *entities*))
 
-(defun start-game (&optional start-procedure)
-  (with-window
+(defun start-game (&key window)
+  (with-window window
     (renderer-init)
-    (when start-procedure
-      (funcall start-procedure))
+    (audio-init)
     (with-event-loop
       (update-entities))))
 
@@ -243,27 +243,15 @@
      (with-accessors ((position transform-position)) entity
        (setf position (transform-position target))))))
 
-#+nil(let ((player (make-instance 'entity
-                             :size (vec2 1.0 1.0)
-                             :behaviors (list 
-                                         (make-instance 'rectangle
-                                                        :color (vec4 255 0 0 255))
-                                         (make-instance 'move)))))
-(setf *entities*
-      (list
-       (make-instance 'entity
-                      :size (vec2 0.2 0.2)
-                      :behaviors (list 
-                                  (make-instance 'camera)))
-       (make-instance 'entity
-                      :position (vec2 2 3)
-                      :size (vec2 1.0 1.0)
-                      :behaviors (list 
-                                  (make-instance 'rectangle
-                                                 :color (vec4 255 255 255 255))))
-       (make-instance 'entity
-                      :size (vec2 1.0 1.0)
-                      :behaviors (list 
-                                  (make-instance 'rectangle
-                                                 :color (vec4 255 255 255 255))))
-       player)))
+(defbehavior speaker
+  ((sound
+    :initarg :sound
+    :accessor speaker-sound)))
+
+(defmethod speaker-play ((speaker speaker) (entity entity))
+  (sound-play (speaker-sound speaker)
+              :location (with-vec (x y) (v* (transform-position entity) -1 10)
+                          (list x y))))
+
+(defmethod speaker-stop ((speaker speaker))
+  (sound-stop (speaker-sound speaker)))

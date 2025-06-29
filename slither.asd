@@ -7,6 +7,10 @@
                #:3d-math
                #:glfw
                #:pngload
+               #:harmony
+               #:cl-mixed-mpg123
+               (:feature :linux #:cl-mixed-pulse)
+               (:feature :windows #:cl-mixed-wasapi)
                #:static-vectors
                (:feature :dev #:file-notify)
                #:alexandria
@@ -14,6 +18,7 @@
   :serial t
   :components ((:file "utils")
                (:file "assets")
+               (:file "audio")
                (:file "window")
                (:file "input")
                (:module "render"
