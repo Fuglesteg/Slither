@@ -47,10 +47,10 @@
   (unless (= *dt* 0)
     (/ 1 *dt*)))
 
-(defun open-window ()
+(defun open-window (&rest initargs)
   (glfw:init)
   (unless *window*
-    (let ((window (make-instance 'game-window)))
+    (let ((window (apply #'make-instance 'game-window initargs)))
       (destructuring-bind (width height) (glfw:framebuffer-size window)
         (setf *window* window
               *window-width* width
@@ -61,9 +61,9 @@
   (setf *window* nil)
   (glfw:shutdown))
 
-(defmacro with-window (&body body)
+(defmacro with-window (initargs &body body)
   `(progn
-     (open-window)
+     (apply #'open-window ,initargs)
      (unwind-protect
           (progn ,@body)
        (close-window))))
