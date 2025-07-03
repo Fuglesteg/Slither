@@ -249,10 +249,35 @@
     :initarg :sound
     :accessor speaker-sound)))
 
+(defbehavior listener
+    ()
+  (:tick (listener entity)
+   (setf (listener-position) (transform-position entity))))
+
 (defmethod speaker-play ((speaker speaker) (entity entity))
   (sound-play (speaker-sound speaker)
-              :location (with-vec (x y) (v* (transform-position entity) -1 10)
-                          (list x y))))
+              :position (transform-position entity)))
 
 (defmethod speaker-stop ((speaker speaker))
   (sound-stop (speaker-sound speaker)))
+
+(defentity player
+    ()
+  (:behaviors
+   (make-instance 'listener)
+   (make-instance 'camera)
+   (make-instance 'rectangle)
+   (make-instance 'move)))
+
+(defsound woosh #P"woosh.mp3")
+
+(defentity boombox
+    ()
+  (:behaviors
+   (make-instance 'speaker :sound (slither/assets:asset-data 'woosh))
+   (make-instance 'rectangle))
+  (:tick boombox
+   (let ((speaker (entity-find-behavior boombox 'speaker)))
+     (when speaker
+       (cond ((key-pressed-p :p) (speaker-play speaker boombox)))))))
+   
