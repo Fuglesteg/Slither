@@ -15,7 +15,8 @@
            #:remove-entity
            #:entities-find-entity
            #:entities-find-entities
-           #:transform-distance))
+           #:transform-distance
+           #:update-entities))
 
 (in-package #:slither/entities)
 
@@ -75,11 +76,19 @@
 (defgeneric tick (entity))
 (defmethod tick ((entity entity)))
 
+(defmethod tick :around ((entity entity))
+  (let ((*entity* entity))
+    (call-next-method)))
+
 (defmethod tick :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
         do (tick behavior)))
 
 (defgeneric start (entity))
+
+(defmethod start :around ((entity entity))
+  (let ((*entity* entity))
+    (call-next-method)))
 
 (defmethod start :before ((entity entity))
   (loop for behavior in (entity-behaviors entity)
