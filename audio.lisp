@@ -1,5 +1,6 @@
 (uiop:define-package #:slither/audio
-  (:use #:cl)
+  (:use #:cl
+        #:org.shirakumo.fraf.math.vectors)
   (:local-nicknames (:harmony :org.shirakumo.fraf.harmony)
                     (:mixed :org.shirakumo.fraf.mixed))
   (:import-from #:slither/assets
@@ -8,7 +9,8 @@
   (:export #:sound-play
            #:sound-stop
            #:audio-init
-           #:defsound))
+           #:defsound
+           #:listener-position))
 
 (in-package #:slither/audio)
 
@@ -17,12 +19,15 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro defsound (name path)
-    (let ((function
-            `(lambda ()
-               (register-asset ',name ,path :sound))))
-      (if *initialized*
-          `(funcall ,function)
-          `(push ,function *run-on-init*)))))
+    `(progn
+       (defvar ,name)
+       (let ((function
+               (lambda ()
+                 (register-asset ',name ,path :sound)
+                 (setf ,name (slither/assets:asset-data ',name)))))
+         (if *initialized*
+             (funcall function)
+             (push function *run-on-init*))))))
 
 (defun audio-init ()
   (harmony:maybe-start-simple-server
@@ -33,11 +38,21 @@
   (setf *initialized* t)
   (setf *run-on-init* nil))
 
-(declaim (inline sound-play))
-(defun sound-play (sound &rest args)
-  (apply #'harmony:play sound :reset t args))
+(defvar *listener-position* (vec2 0))
 
-(declaim (inline sound-stop))
+(defun listener-position ()
+  *listener-position*)
+
+(defun (setf listener-position) (new-position)
+  (setf *listener-position* new-position))
+
+(defun sound-play (sound &key position velocity)
+  (harmony:play sound
+                :reset t
+                :location (with-vec (x y) (v- (v* position -1) (listener-position))
+                            (list x y))
+                :velocity velocity))
+
 (defun sound-stop (sound)
   (harmony:stop sound))
 

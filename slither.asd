@@ -31,4 +31,6 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
+               (:file "entities")
+               (:file "behaviors")
                (:file "slither")))
