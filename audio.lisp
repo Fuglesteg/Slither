@@ -19,12 +19,15 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro defsound (name path)
-    (let ((function
-            `(lambda ()
-               (register-asset ',name ,path :sound))))
-      (if *initialized*
-          `(funcall ,function)
-          `(push ,function *run-on-init*)))))
+    `(progn
+       (defvar ,name)
+       (let ((function
+               (lambda ()
+                 (register-asset ',name ,path :sound)
+                 (setf ,name (slither/assets:asset-data ',name)))))
+         (if *initialized*
+             (funcall function)
+             (push function *run-on-init*))))))
 
 (defun audio-init ()
   (harmony:maybe-start-simple-server
