@@ -26,7 +26,8 @@
            #:speaker
            #:camera
            #:rectangle
-           #:move))
+           #:move
+           #:sprite))
 
 (in-package #:slither/behaviors)
 
@@ -40,6 +41,9 @@
 (defmethod tick :around ((behavior behavior))
   (let ((*entity* (behavior-entity behavior)))
     (call-next-method)))
+
+(defmethod start :before ((behavior behavior))
+  (setf (behavior-entity behavior) *entity*))
 
 (defmethod start ((behavior behavior)))
 
@@ -72,12 +76,32 @@
     ((color
       :accessor rectangle-color
       :initform (vec4 255 0 0 255)
-      :initarg :color))
+      :initarg :color)
+     (depth
+      :accessor rectangle-depth
+      :initform 0
+      :initarg :depth))
   (:tick (rectangle entity)
    (with-accessors ((position transform-position)
                     (size transform-size))
        entity
-     (draw-rectangle position size (rectangle-color rectangle)))))
+     (draw-rectangle position size (rectangle-color rectangle)
+                     :depth (rectangle-depth rectangle)))))
+
+(defbehavior sprite
+    ((texture
+      :accessor sprite-texture
+      :initarg :texture)
+     (depth
+      :accessor sprite-depth
+      :initform 0
+      :initarg :depth))
+  (:tick (sprite entity)
+   (with-accessors ((position transform-position)
+                    (size transform-size))
+       entity
+     (draw-texture position size (sprite-texture sprite)
+                   :depth (sprite-depth sprite)))))
 
 (defbehavior move
     ((dx
