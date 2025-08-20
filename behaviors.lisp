@@ -60,7 +60,7 @@
                         ,@start-body))))
                   (t (destructuring-bind ((&optional behavior entity . method-arguments) . body) arguments
                        `(defgeneric ,keyword-or-symbol ((,behavior) ,@method-arguments)
-                          (:method ((,behavior ,name) ,@method-arguments)
+                          (:method :around ((,behavior ,name) ,@method-arguments)
                             (let ((*entity* (behavior-entity ,behavior)))
                               (call-next-method)))
                           (:method ((,behavior ,name) ,@method-arguments)

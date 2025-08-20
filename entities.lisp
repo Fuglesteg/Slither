@@ -11,6 +11,7 @@
            #:transform-rotation
            #:entity-find-behavior
            #:add-entity
+           #:spawn-entity
            #:append-entity
            #:remove-entity
            #:entities-find-entity
@@ -41,10 +42,8 @@
     (push entity *entities*)
     (start entity)))
 
-(defun append-entity (&rest entities)
-  (setf *entities* (append *entities* entities))
-  (dolist (entity entities)
-    (start entity)))
+(defun spawn-entity (name &rest initargs)
+  (add-entity (apply #'make-instance name initargs)))
 
 (defun remove-entity (&rest entities)
   (dolist (entity entities)
@@ -61,12 +60,22 @@
     :initarg :size)
    (rotation
     :initform 0
-    :accessor transform-rotation
+    :reader transform-rotation
     :initarg :rotation)))
+
+(defun (setf transform-rotation) (new-value transform)
+  (setf (slot-value 'rotation transform)
+        (- new-value (* 360 (floor (/ new-value 360))))))
 
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
   (vdistance (transform-position transform1)
              (transform-position transform2)))
+
+(defun move (offset)
+  (nv+ (transform-position *entity*) offset))
+
+(defun rotate (degrees)
+  (incf (transform-rotation *entity*) degrees))
 
 (defclass entity (transform) 
   ((behaviors
@@ -116,8 +125,11 @@
                         (let ((entity-symbol (gensym)))
                           `(defmethod entity-make-default-behaviors ((,entity-symbol ,name))
                              (list ,@(loop for behavior in arguments
-                                           collect `(,@behavior :entity ,entity-symbol))))))
-                       ((string= keyword :tick)
+                                     collect (etypecase behavior
+                                               (symbol `(make-instance ',behavior :entity ,entity-symbol))
+                                               (cons `(make-instance ,@(cons (list 'quote (car behavior)) (cdr behavior))
+                                                                     :entity ,entity-symbol))))))))
+                        ((string= keyword :tick)
                         (destructuring-bind (&optional entity-symbol . forms) arguments
                           `(defmethod tick ((,entity-symbol ,name))
                              ,@forms)))
@@ -134,3 +146,24 @@
                            ,slots)
                          ,@methods)))))
 
+(defmacro with-behaviors (behaviors entity &body body)
+  (let (behavior-binds slot-binds)
+    (loop for behavior in behaviors
+          do (etypecase behavior
+               (symbol `(,behavior (entity-find-behavior ,entity ',behavior)))
+               (cons (destructuring-bind (slots behavior) behavior
+                       (etypecase behavior
+                         (symbol (push `(,behavior (entity-find-behavior ,entity ',behavior)) behavior-binds))
+                         (cons (destructuring-bind (behavior-binding behavior-symbol) behavior
+                                 (push `(,behavior-binding (entity-find-behavior ,entity ',behavior-symbol)) behavior-binds))))
+                       (let ((behavior (etypecase behavior
+                                         (symbol behavior)
+                                         (cons (second behavior)))))
+                       (loop for slot in slots
+                             do (etypecase slot
+                                  (symbol (push `(,slot (slot-value ,behavior ',slot)) slot-binds))
+                                  (cons (push (destructuring-bind (slot-binding slot-symbol) slot
+                                                `(,slot-binding (slot-value ,behavior ',slot-symbol))) slot-binds)))))))))
+    `(let (,@behavior-binds
+           ,@slot-binds)
+       ,@body)))
