@@ -35,15 +35,10 @@
   ((entity
     :accessor behavior-entity
     :initarg :entity
+    :initform (error "Entity is required")
     :type entity)))
 
 (defmethod tick ((behavior behavior)))
-(defmethod tick :around ((behavior behavior))
-  (let ((*entity* (behavior-entity behavior)))
-    (call-next-method)))
-
-(defmethod start :before ((behavior behavior))
-  (setf (behavior-entity behavior) *entity*))
 
 (defmethod start ((behavior behavior)))
 

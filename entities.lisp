@@ -73,6 +73,14 @@
     :accessor entity-behaviors
     :initarg :behaviors)))
 
+(defgeneric entity-make-default-behaviors (entity))
+(defgeneric entity-initialize-behaviors (entity))
+(defmethod entity-initialize-behaviors ((entity entity))
+  (setf (entity-behaviors entity) (entity-make-default-behaviors entity)))
+
+(defmethod initialize-instance :after ((entity entity) &key)
+  (entity-initialize-behaviors entity))
+
 (defgeneric tick (entity))
 (defmethod tick ((entity entity)))
 
@@ -103,10 +111,12 @@
 (defmacro defentity (name slots &body sections)
   `(progn
      ,@(loop for (keyword . arguments) in sections
-             when (string= keyword :behaviors)
-             append arguments into behaviors
-             else ; Methods
              collect (cond
+                       ((string= keyword :behaviors)
+                        (let ((entity-symbol (gensym)))
+                          `(defmethod entity-make-default-behaviors ((,entity-symbol ,name))
+                             (list ,@(loop for behavior in arguments
+                                           collect `(,@behavior :entity ,entity-symbol))))))
                        ((string= keyword :tick)
                         (destructuring-bind (&optional entity-symbol . forms) arguments
                           `(defmethod tick ((,entity-symbol ,name))
@@ -121,8 +131,6 @@
                              ,@forms)))) into methods
              finally (return
                        `((defclass ,name (entity)
-                           ,slots
-                           (:default-initargs
-                            :behaviors (list ,@behaviors)))
+                           ,slots)
                          ,@methods)))))
 
