@@ -17,7 +17,8 @@
            #:entities-find-entity
            #:entities-find-entities
            #:transform-distance
-           #:update-entities))
+           #:update-entities
+           #:behavior-required-behaviors))
 
 (in-package #:slither/entities)
 
@@ -115,20 +116,32 @@
 
 (defmethod entity-find-behavior ((entity entity) (behavior symbol))
   (find behavior (entity-behaviors entity)
-        :key #'type-of)) 
+        :key #'type-of))
+
+(defgeneric behavior-required-behaviors (behavior))
+(defmethod behavior-required-behaviors ((behavior t)))
 
 (defmacro defentity (name slots &body sections)
   `(progn
      ,@(loop for (keyword . arguments) in sections
              collect (cond
                        ((string= keyword :behaviors)
+                        (let ((behavior-symbols (mapcar (lambda (behavior)
+                                                          (etypecase behavior
+                                                            (symbol behavior)
+                                                            (cons (car behavior))))
+                                                        arguments)))
+                          (loop for behavior in behavior-symbols
+                                do (loop for required-behavior in (behavior-required-behaviors behavior)
+                                         do (unless (member required-behavior behavior-symbols)
+                                              (error "Behavior ~a, required by ~a not found in behavior list" required-behavior behavior)))))
                         (let ((entity-symbol (gensym)))
                           `(defmethod entity-make-default-behaviors ((,entity-symbol ,name))
                              (list ,@(loop for behavior in arguments
-                                     collect (etypecase behavior
-                                               (symbol `(make-instance ',behavior :entity ,entity-symbol))
-                                               (cons `(make-instance ,@(cons (list 'quote (car behavior)) (cdr behavior))
-                                                                     :entity ,entity-symbol))))))))
+                                           collect (etypecase behavior
+                                                     (symbol `(make-instance ',behavior :entity ,entity-symbol))
+                                                     (cons `(make-instance ,@(cons (list 'quote (car behavior)) (cdr behavior))
+                                                                           :entity ,entity-symbol))))))))
                         ((string= keyword :tick)
                         (destructuring-bind (&optional entity-symbol . forms) arguments
                           `(defmethod tick ((,entity-symbol ,name))

@@ -6,6 +6,7 @@
   (:import-from #:slither/entities
                 #:entity
                 #:entity-find-behavior
+                #:behavior-required-behaviors
                 #:transform-size
                 #:transform-position
                 #:transform-rotation
@@ -80,7 +81,10 @@
                    (destructuring-bind ((&optional behavior entity) . start-body) arguments
                      `(defmethod start ((,behavior ,name))
                         (let ((,entity *entity*))
-                        ,@start-body))))
+                          ,@start-body))))
+                  ((string= keyword-or-symbol :required-behaviors)
+                   `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
+                      (quote ,arguments)))
                   (t (destructuring-bind (method-arguments . body) arguments
                        `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
                           (:method ((entity entity) ,@method-arguments)
