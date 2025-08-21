@@ -26,6 +26,6 @@
     (renderer-init)
     (audio-init)
     (with-event-loop
-      (slither/input::input-poll)
+      (input-poll)
       (update-entities)
       (renderer-flush))))

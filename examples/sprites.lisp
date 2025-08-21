@@ -8,10 +8,9 @@
 
 (defentity player ()
   (:behaviors
-   (make-instance 'sprite
-                  :texture player-icon)
-   (make-instance 'move)
-   (make-instance 'camera)))
+   (sprite :texture player-icon)
+   move
+   camera))
 
 (defun start-example ()
   (add-entity (make-instance 'player))

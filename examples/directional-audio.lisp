@@ -7,18 +7,18 @@
 (defentity player
     ()
   (:behaviors
-   (make-instance 'listener)
-   (make-instance 'camera)
-   (make-instance 'rectangle)
-   (make-instance 'move)))
+   listener
+   camera
+   rectangle
+   move))
 
 (defsound woosh #P"woosh.mp3")
 
 (defentity boombox
     ()
   (:behaviors
-   (make-instance 'speaker :sound (slither/assets:asset-data 'woosh))
-   (make-instance 'rectangle))
+   (speaker :sound (slither/assets:asset-data 'woosh))
+   rectangle)
   (:tick boombox
    (let ((speaker (entity-find-behavior boombox 'speaker)))
      (when speaker

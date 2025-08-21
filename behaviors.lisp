@@ -5,6 +5,8 @@
         #:slither/render)
   (:import-from #:slither/entities
                 #:entity
+                #:entity-find-behavior
+                #:behavior-required-behaviors
                 #:transform-size
                 #:transform-position
                 #:transform-rotation
@@ -35,17 +37,34 @@
   ((entity
     :accessor behavior-entity
     :initarg :entity
+    :initform (error "Entity is required")
     :type entity)))
 
 (defmethod tick ((behavior behavior)))
-(defmethod tick :around ((behavior behavior))
-  (let ((*entity* (behavior-entity behavior)))
-    (call-next-method)))
-
-(defmethod start :before ((behavior behavior))
-  (setf (behavior-entity behavior) *entity*))
 
 (defmethod start ((behavior behavior)))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun lambda-list-bindings (lambda-list)
+    "Gets the binding symbols from a lambda list"
+    (let (bindings parsing-keys)
+      (loop for argument in lambda-list
+            do (let ((binding (cond ((eq argument '&key) (setf parsing-keys t) nil)
+                                    ((member argument lambda-list-keywords) nil)
+                                    ((symbolp argument) argument)
+                                    ((consp argument) (car argument))
+                                    (t nil))))
+                 (when binding
+                   (when parsing-keys
+                     (push (intern (symbol-name binding) :keyword) bindings))
+                   (push binding bindings))))
+      (nreverse bindings)))
+
+  (defun ensure-non-keyword-symbol (symbol)
+    (etypecase symbol
+      (keyword (intern (symbol-name symbol)))
+      (symbol symbol)
+      (string (intern symbol)))))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn
@@ -62,15 +81,23 @@
                    (destructuring-bind ((&optional behavior entity) . start-body) arguments
                      `(defmethod start ((,behavior ,name))
                         (let ((,entity *entity*))
-                        ,@start-body))))
-                  (t (destructuring-bind ((&optional behavior entity . method-arguments) . body) arguments
-                       `(defgeneric ,keyword-or-symbol ((,behavior) ,@method-arguments)
-                          (:method ((,behavior ,name) ,@method-arguments)
-                            (let ((*entity* (behavior-entity ,behavior)))
+                          ,@start-body))))
+                  ((string= keyword-or-symbol :required-behaviors)
+                   `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
+                      (quote ,arguments)))
+                  (t (destructuring-bind (method-arguments . body) arguments
+                       `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
+                          (:method ((entity entity) ,@method-arguments)
+                            (,keyword-or-symbol
+                             (entity-find-behavior entity ',name)
+                             ,@(lambda-list-bindings method-arguments)))
+                          (:method :around ((*behavior* ,name) ,@method-arguments)
+                            (declare (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
+                                                              (lambda-list-bindings method-arguments))))
+                            (let ((*entity* (behavior-entity *behavior*)))
                               (call-next-method)))
-                          (:method ((,behavior ,name) ,@method-arguments)
-                            (let ((,entity *entity*))
-                              ,@body)))))))))
+                          (:method ((*behavior* ,name) ,@method-arguments)
+                            ,@body))))))))
 
 (defbehavior rectangle
     ((color

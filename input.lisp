@@ -6,7 +6,8 @@
                 #:game-window
                 #:*window-width*
                 #:*window-height*)
-  (:export :key-held-p
+  (:export :input-poll
+           :key-held-p
            :mouse-position
            :normalized-mouse-position
            :key-press
