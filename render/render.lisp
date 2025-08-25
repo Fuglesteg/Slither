@@ -206,49 +206,49 @@
                                                 (vao quad-vertex-array)
                                                 (layer 0)
                                                 (depth 0))
-  (add-drawcall (make-drawcall :key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                       :vao vao
-                                                       :depth depth
-                                                       :layer layer)
-                               :data (make-drawcall-data :model-matrix (nm* (mtranslation position)
-                                                                            (mscaling size))
-                                                         :color color))))
+  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                 :vao vao
+                                                 :depth depth
+                                                 :layer layer)
+                :model-matrix (nm* (mtranslation position)
+                                   (mscaling size))
+                :color color))
 
 (defun draw-static (&key (shader-program static-shader-program)
                          (vao quad-vertex-array)
                          (depth 0)
                          (layer 0))
-  (add-drawcall (make-drawcall :key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                       :vao vao
-                                                       :layer layer
-                                                       :depth depth))))
+  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                 :vao vao
+                                                 :layer layer
+                                                 :depth depth)))
 
 (defun draw-texture (position size texture &key (shader-program texture-shader-program)
                                                 (vao texture-vertex-array)
                                                 (texture-scale (vec2 1.0 1.0))
                                                 (layer 0)
                                                 (depth 0))
-  (add-drawcall (make-drawcall :key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                       :vao vao
-                                                       :texture-id (texture-id texture)
-                                                       :layer layer
-                                                       :depth depth)
-                               :data (make-drawcall-data :model-matrix (nm* (mtranslation position)
-                                                                            (mscaling size))
-                                                         :texture-scale texture-scale))))
+  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                 :vao vao
+                                                 :texture-id (texture-id texture)
+                                                 :layer layer
+                                                 :depth depth)
+                :model-matrix (nm* (mtranslation position)
+                                   (mscaling size))
+                :texture-scale texture-scale))
 
 (defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
                                                                   (vao texture-vertex-array)
                                                                   (layer 0)
                                                                   (depth 0))
-  (add-drawcall (make-drawcall :key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                       :vao vao
-                                                       :texture-id (texture-id array-texture)
-                                                       :layer layer
-                                                       :depth depth)
-                               :data (make-drawcall-data :model-matrix (nm* (mtranslation position)
-                                                                            (mscaling size))
-                                                         :texture-index index))))
+  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                 :vao vao
+                                                 :texture-id (texture-id array-texture)
+                                                 :layer layer
+                                                 :depth depth)
+                :model-matrix (nm* (mtranslation position)
+                                   (mscaling size))
+                :texture-index index))
 
 (defconstant +unset-uniform-id+ 1024)
 
@@ -265,6 +265,7 @@
   (key 0 :type drawcall-key)
   (data (make-drawcall-data) :type drawcall-data))
 
+(declaim (type (vector drawcall) *drawcall-buffer*))
 (defvar *drawcall-buffer*
   (make-array 32768
               :element-type 'drawcall
@@ -280,7 +281,7 @@
                           drawcall-key)))
 (defun make-drawcall-key (&key shader-program-id vao (texture-id 0) (layer 0) (depth 0))
   (let ((offset 0) (key 0))
-    (declare (type (unsigned-byte 32) key))
+    (declare (type drawcall-key key))
     (flet ((key-insert-field (value size)
              (setf key (dpb value (byte size offset) key))
              (incf offset size)))
@@ -311,9 +312,18 @@
        (key-get-field 8)
        (key-get-field 8)))))
 
-(defun add-drawcall (drawcall)
-  (vector-push drawcall
-               *drawcall-buffer*))
+(defun add-drawcall (&key drawcall-key color model-matrix texture-scale texture-index)
+  (let* ((drawcall (aref *drawcall-buffer* (fill-pointer *drawcall-buffer*)))
+         (drawcall-data (drawcall-data drawcall)))
+    (macrolet ((update-drawcall-field (field)
+                 `(when ,field
+                    (setf (,(intern (format nil "DRAWCALL-DATA-~a" (symbol-name field))) drawcall-data) ,field))))
+      (setf (drawcall-key drawcall) drawcall-key)
+      (update-drawcall-field color)
+      (update-drawcall-field model-matrix)
+      (update-drawcall-field texture-scale)
+      (update-drawcall-field texture-index)))
+  (incf (fill-pointer *drawcall-buffer*)))
 
 (defun sort-drawcall-buffer ()
   (setf *drawcall-buffer* (sort *drawcall-buffer*
