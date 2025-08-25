@@ -13,5 +13,5 @@
    camera))
 
 (defun start-example ()
-  (add-entity (make-instance 'player))
+  (spawn-entity 'player)
   (start-game))

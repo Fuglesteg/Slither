@@ -25,6 +25,6 @@
        (cond ((key-pressed-p :p) (speaker-play speaker boombox)))))))
 
 (defun start-example ()
-  (add-entity (make-instance 'player)
-              (make-instance 'boombox))
+  (spawn-entity 'player)
+  (spawn-entity 'boombox)
   (start-game))
