@@ -22,13 +22,14 @@
                 #:sound-stop
                 #:listener-position)
   (:export #:defbehavior
+           #:with-behaviors
            #:speaker-play
            #:speaker-stop
            #:listener
            #:speaker
            #:camera
            #:rectangle
-           #:move
+           #:directional-move
            #:sprite))
 
 (in-package #:slither/behaviors)
@@ -43,28 +44,6 @@
 (defmethod tick ((behavior behavior)))
 
 (defmethod start ((behavior behavior)))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun lambda-list-bindings (lambda-list)
-    "Gets the binding symbols from a lambda list"
-    (let (bindings parsing-keys)
-      (loop for argument in lambda-list
-            do (let ((binding (cond ((eq argument '&key) (setf parsing-keys t) nil)
-                                    ((member argument lambda-list-keywords) nil)
-                                    ((symbolp argument) argument)
-                                    ((consp argument) (car argument))
-                                    (t nil))))
-                 (when binding
-                   (when parsing-keys
-                     (push (intern (symbol-name binding) :keyword) bindings))
-                   (push binding bindings))))
-      (nreverse bindings)))
-
-  (defun ensure-non-keyword-symbol (symbol)
-    (etypecase symbol
-      (keyword (intern (symbol-name symbol)))
-      (symbol symbol)
-      (string (intern symbol)))))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn

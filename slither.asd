@@ -33,4 +33,5 @@
                  (:file "render")))
                (:file "entities")
                (:file "behaviors")
+               (:file "scenes")
                (:file "slither")))

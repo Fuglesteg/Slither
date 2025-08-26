@@ -2,9 +2,12 @@
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
+        #:slither/utils
         #:slither/render)
   (:export #:start
            #:tick
+           #:move
+           #:rotate
            #:defentity
            #:transform-position
            #:transform-size
@@ -143,17 +146,19 @@
                                                      (cons `(make-instance ,@(cons (list 'quote (car behavior)) (cdr behavior))
                                                                            :entity ,entity-symbol))))))))
                         ((string= keyword :tick)
-                        (destructuring-bind (&optional entity-symbol . forms) arguments
-                          `(defmethod tick ((,entity-symbol ,name))
-                             ,@forms)))
-                       ((string= keyword :start)
-                        (destructuring-bind (&optional entity-symbol . forms) arguments
-                          `(defmethod start ((,entity-symbol ,name))
-                             ,@forms)))
+                         (let ((entity-symbol (gensym)))
+                           `(defmethod tick ((,entity-symbol ,name))
+                             ,@arguments)))
+                        ((string= keyword :start)
+                         (let ((entity-symbol (gensym)))
+                           `(defmethod start ((,entity-symbol ,name))
+                            ,@arguments)))
                        (t
-                        (destructuring-bind ((entity-symbol . method-arguments) . forms) arguments
-                          `(defmethod ,keyword ((,entity-symbol ,name) ,@method-arguments)
-                             ,@forms)))) into methods
+                        (let ((entity-symbol (gensym)))
+                          (destructuring-bind (method-arguments . body) arguments
+                            `(defmethod ,(ensure-non-keyword-symbol keyword) ((,entity-symbol ,name) ,@method-arguments)
+                               (let ((*entity* ,entity-symbol))
+                               ,@body)))))) into methods
              finally (return
                        `((defclass ,name (entity)
                            ,slots)
