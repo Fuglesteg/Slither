@@ -11,7 +11,9 @@
            :random-float
            :random-element
            :clamp
-           :smoothstep))
+           :smoothstep
+           :ensure-non-keyword-symbol
+           :lambda-list-bindings))
 
 (in-package #:slither/utils)
 
@@ -72,7 +74,7 @@
   (* radians (/ 180 pi)))
 
 (defmethod angle-towards ((from vec2) (to vec2))
-  (with-vector (x y) (direction (vscale (v- to from) 1))
+  (with-vec (x y) (vscale (v- to from) 1)
     (radians->degrees (atan x y))))
 
 (defun random-element (list)
@@ -80,3 +82,24 @@
 
 (defun random-color ()
   (vec3 (random-float) (random-float) (random-float)))
+
+(defun lambda-list-bindings (lambda-list)
+  "Gets the binding symbols from a lambda list"
+  (let (bindings parsing-keys)
+    (loop for argument in lambda-list
+          do (let ((binding (cond ((eq argument '&key) (setf parsing-keys t) nil)
+                                  ((member argument lambda-list-keywords) nil)
+                                  ((symbolp argument) argument)
+                                  ((consp argument) (car argument))
+                                  (t nil))))
+               (when binding
+                 (when parsing-keys
+                   (push (intern (symbol-name binding) :keyword) bindings))
+                 (push binding bindings))))
+    (nreverse bindings)))
+
+(defun ensure-non-keyword-symbol (symbol)
+  (etypecase symbol
+    (keyword (intern (symbol-name symbol)))
+    (symbol symbol)
+    (string (intern symbol))))
