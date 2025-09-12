@@ -2,6 +2,7 @@
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
+        #:slither/utils
         #:slither/render)
   (:import-from #:slither/entities
                 #:entity
@@ -22,7 +23,6 @@
                 #:sound-stop
                 #:listener-position)
   (:export #:defbehavior
-           #:with-behaviors
            #:speaker-play
            #:speaker-stop
            #:listener
@@ -30,9 +30,13 @@
            #:camera
            #:rectangle
            #:directional-move
-           #:sprite))
+           #:sprite
+           #:behavior-entity
+           #:*behavior*))
 
 (in-package #:slither/behaviors)
+
+(defvar *behavior* nil)
 
 (defclass behavior ()
   ((entity
@@ -41,9 +45,17 @@
     :initform (error "Entity is required")
     :type entity)))
 
-(defmethod tick ((behavior behavior)))
+(defgeneric tick (behavior)
+  (:method ((behavior behavior)))
+  (:method :around ((*behavior* behavior))
+    (declare (special *behavior*))
+    (call-next-method)))
 
-(defmethod start ((behavior behavior)))
+(defgeneric start (behavior)
+  (:method ((behavior behavior)))
+  (:method :around ((*behavior* behavior))
+    (declare (special *behavior*))
+    (call-next-method)))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn
@@ -52,26 +64,23 @@
              collect
                 (cond 
                   ((string= keyword-or-symbol :tick)
-                   (destructuring-bind ((&optional behavior entity) . tick-body) arguments
-                     `(defmethod tick ((,behavior ,name))
-                        (let ((,entity *entity*))
-                          ,@tick-body))))
+                     `(defmethod tick ((,(gensym) ,name))
+                          ,@arguments))
                   ((string= keyword-or-symbol :start)
-                   (destructuring-bind ((&optional behavior entity) . start-body) arguments
-                     `(defmethod start ((,behavior ,name))
-                        (let ((,entity *entity*))
-                          ,@start-body))))
+                     `(defmethod start ((,(gensym) ,name))
+                          ,@arguments))
                   ((string= keyword-or-symbol :required-behaviors)
                    `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
                       (quote ,arguments)))
                   (t (destructuring-bind (method-arguments . body) arguments
                        `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
                           (:method ((entity entity) ,@method-arguments)
-                            (,keyword-or-symbol
+                            (,(ensure-non-keyword-symbol keyword-or-symbol)
                              (entity-find-behavior entity ',name)
                              ,@(lambda-list-bindings method-arguments)))
                           (:method :around ((*behavior* ,name) ,@method-arguments)
-                            (declare (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
+                            (declare (special *behavior*)
+                                     (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
                                                               (lambda-list-bindings method-arguments))))
                             (let ((*entity* (behavior-entity *behavior*)))
                               (call-next-method)))
@@ -107,6 +116,7 @@
                     (size transform-size))
        entity
      (draw-texture position size (sprite-texture sprite)
+                   :rotation (transform-rotation entity)
                    :depth (sprite-depth sprite)))))
 
 (defbehavior move
@@ -159,7 +169,9 @@
                 (> zoom 0.01))
        (decf zoom
              *dt*))
-     (set-camera-position (transform-position entity) zoom))))
+     (set-camera-position (transform-position entity)
+                          :zoom zoom
+                          :rotation (transform-rotation entity)))))
 
 (defbehavior follow
     ((target

@@ -7,15 +7,24 @@
            :function-symbol->global-variable-symbol
            :defmemo
            :random-color
+           :degrees->radians
            :rotation->vec2
            :random-float
            :random-element
            :clamp
            :smoothstep
            :ensure-non-keyword-symbol
-           :lambda-list-bindings))
+           :lambda-list-bindings
+           :vec2->rotation
+           :mat2->mat3
+           :safe-vscale))
 
 (in-package #:slither/utils)
+
+(defun safe-vscale (a s)
+  (if (= (+ (vx a) (vy a)) 0)
+      a
+      (vscale a s)))
 
 (defmacro defmemo (name &body body)
   (let ((memo (gensym "MEMO")))
@@ -65,6 +74,11 @@
 (defun random-float (&optional (range 1) (precision 10))
   (float (* (/ (random precision) precision) range)))
 
+(defun mat2->mat3 (mat2)
+  (let ((mat3 (meye 3)))
+    (mtransfer mat3 mat2 :w 2 :h 2)
+    mat3))
+
 (defun randomly-negate (number)
   (case (random 2)
     (0 (- number))
@@ -73,9 +87,12 @@
 (defun radians->degrees (radians)
   (* radians (/ 180 pi)))
 
+(defun vec2->rotation (vec)
+  (radians->degrees (atan (vx vec)
+                          (vy vec))))
+
 (defmethod angle-towards ((from vec2) (to vec2))
-  (with-vec (x y) (vscale (v- to from) 1)
-    (radians->degrees (atan x y))))
+  (vec2->rotation (vscale (v- to from) 1)))
 
 (defun random-element (list)
   (nth (random (length list)) list))

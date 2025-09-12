@@ -5,6 +5,7 @@
   (:export #:texture
            #:texture-bind
            #:texture-unbind
+           #:texture-asset
            #:with-bound-texture))
 
 (in-package #:slither/render/texture)
@@ -14,10 +15,15 @@
     :accessor texture-id
     :initarg :id)
    (asset
-    :accessor texture-asset
+    :reader texture-asset
+    :initform nil
     :initarg :asset)))
 
-(defmethod initialize-instance :after ((texture texture) &key)
+(defun (setf texture-asset) (new-asset texture)
+  (setf (slot-value texture 'asset) new-asset)
+  (texture-load-asset texture))
+
+(defmethod texture-load-asset ((texture texture))
   (let ((id (gl:gen-texture))
         (png (asset-data (texture-asset texture))))
     (gl:bind-texture :texture-2d id)
@@ -34,6 +40,10 @@
     (gl:generate-mipmap :texture-2d)
     (gl:bind-texture :texture-2d 0)
     (setf (texture-id texture) id)))
+  
+(defmethod initialize-instance :after ((texture texture) &key)
+  (when (texture-asset texture)
+    (texture-load-asset texture)))
 
 (defmethod texture-bind ((texture texture))
   (gl:bind-texture :texture-2d (texture-id texture)))

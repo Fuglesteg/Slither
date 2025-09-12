@@ -8,8 +8,9 @@
 
 (defentity player ()
   (:behaviors
-   (sprite :texture player-icon)
+   #+nil(sprite :texture player-icon)
    move
+   rectangle
    camera))
 
 (defun start-example ()
