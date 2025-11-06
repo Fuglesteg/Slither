@@ -31,6 +31,16 @@
 
 (defbehavior rigidbody
     (colliders
+     (mass
+      :accessor rigidbody-mass
+      :initarg :mass
+      :initform 1.0
+      :type float)
+     (bounciness
+      :accessor rigidbody-bounciness
+      :initarg bounciness
+      :initform 0.0
+      :type float)
      (drag
       :accessor rigidbody-drag
       :initarg :drag
@@ -46,11 +56,17 @@
      (setf (slot-value *behavior* 'colliders)
            (list collider))))
   (:tick
+   ; Drag
+   (vdecf (rigidbody-velocity *behavior*) (rigidbody-drag *behavior*))
+
+   ; Collisions
    (loop for this-collider in (slot-value *behavior* 'colliders)
-         do (loop for foreign-collider in (remove-if-not
-                                           (lambda (behavior)
-                                             (not (eql (behavior-entity behavior) *entity*)))
-                                           (behaviors-of-type 'circle-collider))
+         do (loop for foreign-collider in
+                     ; Make sure the collision check doesn't run on a collider on current entity
+                     (remove-if-not
+                      (lambda (behavior)
+                        (not (eql (behavior-entity behavior) *entity*)))
+                      (behaviors-of-type 'circle-collider))
                   ; TODO: Add etypecase for other colliders
                   do (let* ((offset (v- (transform-position (behavior-entity foreign-collider))
                                         (transform-position *entity*)))
@@ -60,34 +76,53 @@
                                                    (v/ offset distance)))
                             (total-size (+ (circle-radius this-collider)
                                            (circle-radius foreign-collider))))
-                       ; Drag
-                       (vdecf (rigidbody-velocity *behavior*) (rigidbody-drag *behavior*))
 
                        ; Collision detection
                        (when (< distance total-size)
                          ;; Collision resolution
                          ; Set position of object to edge
-                         (setf (transform-position *entity*)
+                         #+nil(setf (transform-position *entity*)
                                (vscale normalized-offset
                                        (- total-size)))
-                         (let* ((obj1-mass 10)
-                                (obj2-mass 1)
+
+                         (let* ((this-mass (rigidbody-mass *behavior*))
+                                (this-inverse-mass (if (= this-mass 0.0)
+                                                       0.0
+                                                       this-mass))
+                                (this-bounciness (rigidbody-bounciness *behavior*))
+                                (foreign-rigidbody (entity-find-behavior (behavior-entity foreign-collider)
+                                                                         'rigidbody))
+                                (foreign-bounciness (if foreign-rigidbody
+                                                        (rigidbody-bounciness foreign-rigidbody)
+                                                        0.0))
+                                (foreign-mass (if foreign-rigidbody
+                                                  (rigidbody-mass foreign-rigidbody)
+                                                  0.0))
+                                (foreign-inverse-mass (if (= foreign-mass 0.0)
+                                                          0.0
+                                                          foreign-mass))
+                                (foreign-velocity (if foreign-rigidbody
+                                                      (rigidbody-velocity foreign-rigidbody)
+                                                      (vec2)))
                                 (static-friction 1)
                                 (dynamic-friction 1)
-                                (relative-velocity (v- (vec2 0 0) #+nil(rigidbody-velocity (behavior-entity foreign-collider))
+                                (relative-velocity (v- foreign-velocity
                                                        (rigidbody-velocity *behavior*)))
                                 (velocity-along-normal (v. relative-velocity
                                                            normalized-offset))
-                                (restitution (let ((res1 1.1) (res2 1.1))
-                                               (min res1 res2)))
+                                (restitution (min this-bounciness foreign-bounciness))
                                 (normal-impulse (/ (* (- (+ 1 restitution)) velocity-along-normal)
-                                                   (+ (/ 1 obj1-mass)
-                                                      (/ 1 obj2-mass)))))
+                                                   (+ this-inverse-mass
+                                                      foreign-inverse-mass))))
                            ; Collision impulse resolution
                            (unless (> velocity-along-normal 0)
                              (setf (rigidbody-velocity *behavior*)
                                    (v- (rigidbody-velocity *behavior*)
-                                       (v* normalized-offset normal-impulse (/ 1 obj1-mass))))
+                                       (v* normalized-offset normal-impulse this-inverse-mass)))
+                             (when foreign-rigidbody
+                               (setf (rigidbody-velocity foreign-rigidbody)
+                                     (v+ (rigidbody-velocity foreign-rigidbody)
+                                         (v* normalized-offset normal-impulse foreign-inverse-mass))))
                              (let* ((relative-velocity (v- (vec2 0 0) #+nil(rigidbody-velocity (behavior-entity foreign-collider))
                                                            (rigidbody-velocity *behavior*)))
                                     (tangent (safe-vscale
@@ -96,8 +131,8 @@
                                                       (v. relative-velocity normalized-offset)))
                                               1))
                                     (tangent-magnitude (/ (- (v. relative-velocity tangent))
-                                                          (+ (/ 1 obj1-mass)
-                                                             (/ 1 obj2-mass))))
+                                                          (+ this-inverse-mass
+                                                             foreign-inverse-mass)))
                                     (mu (sqrt (+ (expt static-friction 2) (expt static-friction 2))))
                                     (friction-impulse (if (< (abs tangent-magnitude) (* normal-impulse mu))
                                                           (v* tangent tangent-magnitude)
@@ -107,8 +142,13 @@
                                ; Friction impulse resolution
                                (setf (rigidbody-velocity *behavior*)
                                      (v- (rigidbody-velocity *behavior*)
-                                         (let ((inverse-mass (/ 1 obj1-mass)))
-                                           (v* friction-impulse inverse-mass)))))))))))
+                                         (v* friction-impulse this-inverse-mass)))
+                               (when foreign-rigidbody
+                                 (setf (rigidbody-velocity foreign-rigidbody)
+                                       (v+ (rigidbody-velocity foreign-rigidbody)
+                                           (v* friction-impulse foreign-inverse-mass)))))))))))
+
+   ; Update position
    (move (rigidbody-velocity *behavior*)))
   (:rigidbody-velocity+ (force)
    (setf (rigidbody-velocity *behavior*) (nv+ (rigidbody-velocity *behavior*) force))))
