@@ -8,7 +8,9 @@
                  #:slither/audio
                  #:slither/input
                  #:slither/entities
-                 #:slither/behaviors)
+                 #:slither/behaviors
+                 #:slither/scenes
+                 #:slither/collisions)
   (:import-from #:slither/render/uniform
                 #:uniform-value
                 #:uniform-location)
