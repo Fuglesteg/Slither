@@ -99,13 +99,13 @@
                                           :uniform-symbols ,uniforms
                                           :on-bind ,on-bind
                                           :on-render ,on-render)))))
-  
+
   (defmacro define-vertex-array-object (name &body body)
     `(progn
        (defvar ,name nil)
        (delay-evaluation
          (setf ,name (progn ,@body)))))
-  
+
   (defmacro define-texture (name file)
     `(progn
        (defvar ,name (make-instance 'texture))
@@ -116,12 +116,35 @@
   (defmacro define-array-texture (name file &key width height)
     `(progn
        (defvar ,name nil)
-       (defasset ,name ,file :png) 
+       (defasset ,name ,file :png)
        (delay-evaluation
          (setf ,name (make-instance 'array-texture
                                     :asset ',name
                                     :width ,width
                                     :height ,height))))))
+
+(defun m3rotate (degrees)
+  (let ((cosine (cos (degrees->radians degrees)))
+        (sine (sin (degrees->radians degrees))))
+    (mat3 cosine (- sine) 0
+          sine cosine 0
+          0 0 1)))
+
+(defvar *view-matrix* nil)
+(defun set-camera-position (position &key
+                                     (zoom 1.0)
+                                     (aspect-ratio (/ slither/window:*window-width* slither/window:*window-height*))
+                                     (rotation 0))
+  (let ((zoom (if (< zoom 0)
+                  0
+                  zoom)))
+    (setf *view-matrix*
+          (nm*
+           (mscaling (vec2 (/ zoom aspect-ratio) zoom))
+           (m3rotate (- 360 rotation))
+           (mtranslation
+            (v* position -1))))))
+
 
 (define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
 (define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
@@ -182,28 +205,6 @@
   (eval-on-init)
   (gl:enable :blend)
   (gl:blend-func :src-alpha :one-minus-src-alpha))
-
-(defun m3rotate (degrees)
-  (let ((cosine (cos (degrees->radians degrees)))
-        (sine (sin (degrees->radians degrees))))
-    (mat3 cosine (- sine) 0
-          sine cosine 0
-          0 0 1)))
-
-(defvar *view-matrix* nil)
-(defun set-camera-position (position &key
-                                     (zoom 1.0)
-                                     (aspect-ratio (/ slither/window:*window-width* slither/window:*window-height*))
-                                     (rotation 0))
-  (let ((zoom (if (< zoom 0)
-                  0
-                  zoom)))
-  (setf *view-matrix*
-        (nm*
-         (mscaling (vec2 (/ zoom aspect-ratio) zoom))
-         (m3rotate (- 360 rotation))
-         (mtranslation
-          (v* position -1))))))
 
 (defun screen-space-position (vector)
   (m* (minv *view-matrix*) vector))
@@ -305,7 +306,7 @@
       (key-insert-field layer 8)
       key)))
 
-(declaim (ftype (function (drawcall-key) (values (unsigned-byte 8) 
+(declaim (ftype (function (drawcall-key) (values (unsigned-byte 8)
                                                  (unsigned-byte 8)
                                                  (unsigned-byte 8)
                                                  (unsigned-byte 8)
