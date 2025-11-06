@@ -4,7 +4,9 @@
   (:import-from #:slither/entities
                 #:start
                 #:tick)
-  (:export #:defscene))
+  (:export #:defscene
+           #:scene-reset
+           #:scene-switch))
 
 (in-package #:slither/scenes)
 
@@ -19,11 +21,12 @@
 
 (defgeneric scene-reset (scene)
   (:method ((scene scene))
-    (setf (scene-entities scene) (scene-make-initial-entities scene))))
+    (setf (scene-entities scene) (scene-make-initial-entities scene))
+    (start scene)))
 
 (defgeneric scene-switch (scene)
   (:method ((scene scene))
-    (when (scene-entities scene)
+    (unless (scene-entities scene)
       (scene-reset scene))
     (setf slither/entities::*entities* (scene-entities scene))
     (scene-on-switch scene))
@@ -37,7 +40,10 @@
   (:method ((scene scene)) nil))
 
 (defmethod tick ((scene scene)))
-(defmethod start ((scene scene)))
+
+(defmethod start ((scene scene))
+  (loop for entity in (scene-entities scene)
+        do (start entity)))
 
 (defmacro defscene (name slots &body sections)
   `(progn
@@ -55,7 +61,8 @@
                                     (list ,@(loop for entity in body
                                                   collect (etypecase entity
                                                             (symbol `(make-instance ',entity))
-                                                            (cons `(make-instance ,@(cons (list 'quote (car entity)) (cdr entity))))))))))
+                                                            (cons `(make-instance ,@(cons (list 'quote (car entity))
+                                                                                          (cdr entity))))))))))
                                 ((string= keyword :start)
                                  (scene-method 'start))
                                 ((string= keyword :tick)

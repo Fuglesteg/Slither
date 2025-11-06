@@ -21,7 +21,10 @@
            #:entities-find-entities
            #:transform-distance
            #:update-entities
-           #:behavior-required-behaviors))
+           #:behavior-required-behaviors
+           #:with-behaviors
+           #:*entity*
+           #:behaviors-of-type))
 
 (in-package #:slither/entities)
 
@@ -36,6 +39,12 @@
   (remove-if-not (lambda (entity)
                    (typep entity entity-type))
                  *entities*))
+
+(defun behaviors-of-type (type)
+  (loop for entity in *entities*
+        append (loop for behavior in (entity-behaviors entity)
+                     when (typep behavior type)
+                     collect behavior)))
 
 (defun update-entities ()
   (loop for entity in *entities*
@@ -68,7 +77,7 @@
     :initarg :rotation)))
 
 (defun (setf transform-rotation) (new-value transform)
-  (setf (slot-value 'rotation transform)
+  (setf (slot-value transform 'rotation)
         (- new-value (* 360 (floor (/ new-value 360))))))
 
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
@@ -168,7 +177,7 @@
   (let (behavior-binds slot-binds)
     (loop for behavior in behaviors
           do (etypecase behavior
-               (symbol `(,behavior (entity-find-behavior ,entity ',behavior)))
+               (symbol (push `(,behavior (entity-find-behavior ,entity ',behavior)) behavior-binds))
                (cons (destructuring-bind (slots behavior) behavior
                        (etypecase behavior
                          (symbol (push `(,behavior (entity-find-behavior ,entity ',behavior)) behavior-binds))
@@ -176,12 +185,12 @@
                                  (push `(,behavior-binding (entity-find-behavior ,entity ',behavior-symbol)) behavior-binds))))
                        (let ((behavior (etypecase behavior
                                          (symbol behavior)
-                                         (cons (second behavior)))))
-                       (loop for slot in slots
-                             do (etypecase slot
-                                  (symbol (push `(,slot (slot-value ,behavior ',slot)) slot-binds))
-                                  (cons (push (destructuring-bind (slot-binding slot-symbol) slot
-                                                `(,slot-binding (slot-value ,behavior ',slot-symbol))) slot-binds)))))))))
-    `(let (,@behavior-binds
+                                         (cons (car behavior)))))
+                         (loop for slot in slots
+                               do (etypecase slot
+                                    (symbol (push `(,slot (slot-value ,behavior ',slot)) slot-binds))
+                                    (cons (push (destructuring-bind (slot-binding slot-symbol) slot
+                                                  `(,slot-binding (slot-value ,behavior ',slot-symbol))) slot-binds)))))))))
+    `(let* (,@behavior-binds
            ,@slot-binds)
        ,@body)))

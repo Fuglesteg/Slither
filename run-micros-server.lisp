@@ -11,3 +11,4 @@
 (asdf:load-system :slither :force t)
 
 (read)
+(quit)

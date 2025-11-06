@@ -33,5 +33,6 @@
                  (:file "render")))
                (:file "entities")
                (:file "behaviors")
+               (:file "collisions")
                (:file "scenes")
                (:file "slither")))

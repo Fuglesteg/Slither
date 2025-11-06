@@ -36,7 +36,7 @@
 #+micros
 (defun read-repl ()
   (continuable
-    (let ((connection (or micros/swank-api:*emacs-connection* 
+    (let ((connection (or micros/swank-api:*emacs-connection*
                           (micros::default-connection))))
       (when connection
         (micros::handle-requests connection t)))))

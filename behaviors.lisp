@@ -2,6 +2,7 @@
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
+        #:slither/utils
         #:slither/render)
   (:import-from #:slither/entities
                 #:entity
@@ -22,7 +23,6 @@
                 #:sound-stop
                 #:listener-position)
   (:export #:defbehavior
-           #:with-behaviors
            #:speaker-play
            #:speaker-stop
            #:listener
@@ -30,9 +30,13 @@
            #:camera
            #:rectangle
            #:directional-move
-           #:sprite))
+           #:sprite
+           #:behavior-entity
+           #:*behavior*))
 
 (in-package #:slither/behaviors)
+
+(defvar *behavior* nil)
 
 (defclass behavior ()
   ((entity
@@ -41,9 +45,17 @@
     :initform (error "Entity is required")
     :type entity)))
 
-(defmethod tick ((behavior behavior)))
+(defgeneric tick (behavior)
+  (:method ((behavior behavior)))
+  (:method :around ((*behavior* behavior))
+    (declare (special *behavior*))
+    (call-next-method)))
 
-(defmethod start ((behavior behavior)))
+(defgeneric start (behavior)
+  (:method ((behavior behavior)))
+  (:method :around ((*behavior* behavior))
+    (declare (special *behavior*))
+    (call-next-method)))
 
 (defmacro defbehavior (name slots &body sections)
   `(progn
@@ -52,26 +64,23 @@
              collect
                 (cond 
                   ((string= keyword-or-symbol :tick)
-                   (destructuring-bind ((&optional behavior entity) . tick-body) arguments
-                     `(defmethod tick ((,behavior ,name))
-                        (let ((,entity *entity*))
-                          ,@tick-body))))
+                     `(defmethod tick ((,(gensym) ,name))
+                          ,@arguments))
                   ((string= keyword-or-symbol :start)
-                   (destructuring-bind ((&optional behavior entity) . start-body) arguments
-                     `(defmethod start ((,behavior ,name))
-                        (let ((,entity *entity*))
-                          ,@start-body))))
+                     `(defmethod start ((,(gensym) ,name))
+                          ,@arguments))
                   ((string= keyword-or-symbol :required-behaviors)
                    `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
                       (quote ,arguments)))
                   (t (destructuring-bind (method-arguments . body) arguments
                        `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
                           (:method ((entity entity) ,@method-arguments)
-                            (,keyword-or-symbol
+                            (,(ensure-non-keyword-symbol keyword-or-symbol)
                              (entity-find-behavior entity ',name)
                              ,@(lambda-list-bindings method-arguments)))
                           (:method :around ((*behavior* ,name) ,@method-arguments)
-                            (declare (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
+                            (declare (special *behavior*)
+                                     (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
                                                               (lambda-list-bindings method-arguments))))
                             (let ((*entity* (behavior-entity *behavior*)))
                               (call-next-method)))
@@ -87,12 +96,12 @@
       :accessor rectangle-depth
       :initform 0
       :initarg :depth))
-  (:tick (rectangle entity)
+  (:tick
    (with-accessors ((position transform-position)
                     (size transform-size))
-       entity
-     (draw-rectangle position size (rectangle-color rectangle)
-                     :depth (rectangle-depth rectangle)))))
+       *entity*
+     (draw-rectangle position size (rectangle-color *behavior*)
+                     :depth (rectangle-depth *behavior*)))))
 
 (defbehavior sprite
     ((texture
@@ -102,12 +111,13 @@
       :accessor sprite-depth
       :initform 0
       :initarg :depth))
-  (:tick (sprite entity)
+  (:tick
    (with-accessors ((position transform-position)
                     (size transform-size))
-       entity
-     (draw-texture position size (sprite-texture sprite)
-                   :depth (sprite-depth sprite)))))
+       *entity*
+     (draw-texture position size (sprite-texture *behavior*)
+                   :rotation (transform-rotation *entity*)
+                   :depth (sprite-depth *behavior*)))))
 
 (defbehavior move
     ((dx
@@ -125,8 +135,8 @@
       :initarg :speed
       :initform 1.0
       :type single-float))
-  (:tick (move entity)
-   (with-slots (dx dy speed) move
+  (:tick
+   (with-slots (dx dy speed) *behavior*
      (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
      (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
      (incf dx (+ (if (key-held-p :d)
@@ -141,7 +151,7 @@
                  (if (key-held-p :s)
                      (* speed -1)
                      0)))
-     (with-accessors ((position transform-position)) entity
+     (with-accessors ((position transform-position)) *entity*
        (incf (vx position) (* dx (coerce *dt* 'single-float)))
        (incf (vy position) (* dy (coerce *dt* 'single-float)))))))
 
@@ -150,8 +160,8 @@
       :initform 1.0
       :accessor camera-zoom
       :initarg :zoom))
-  (:tick (camera entity)
-   (with-accessors ((zoom camera-zoom)) camera
+  (:tick
+   (with-accessors ((zoom camera-zoom)) *behavior*
      (when (key-held-p :i)
        (incf zoom
              *dt*))
@@ -159,14 +169,16 @@
                 (> zoom 0.01))
        (decf zoom
              *dt*))
-     (set-camera-position (transform-position entity) zoom))))
+     (set-camera-position (transform-position *entity*)
+                          :zoom zoom
+                          :rotation (transform-rotation *entity*)))))
 
 (defbehavior follow
     ((target
       :initarg :target))
-  (:tick (follow entity)
-   (with-slots (target) follow
-     (with-accessors ((position transform-position)) entity
+  (:tick
+   (with-slots (target) *behavior*
+     (with-accessors ((position transform-position)) *entity*
        (setf position (transform-position target))))))
 
 (defbehavior speaker
@@ -176,8 +188,8 @@
 
 (defbehavior listener
     ()
-  (:tick (listener entity)
-   (setf (listener-position) (transform-position entity))))
+  (:tick
+   (setf (listener-position) (transform-position *entity*))))
 
 (defmethod speaker-play ((speaker speaker) (entity entity))
   (sound-play (speaker-sound speaker)

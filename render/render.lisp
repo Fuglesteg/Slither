@@ -1,5 +1,6 @@
 (uiop:define-package #:slither/render
   (:use :cl
+        :slither/utils
         :org.shirakumo.fraf.math.matrices
         :org.shirakumo.fraf.math.vectors)
   (:import-from :slither/render/uniform
@@ -9,7 +10,8 @@
   (:import-from :slither/render/texture
                 #:texture
                 #:texture-id
-                #:with-bound-texture)
+                #:with-bound-texture
+                #:texture-asset)
   (:import-from :slither/render/array-texture
                 #:array-texture
                 #:with-bound-array-texture)
@@ -31,8 +33,6 @@
                 #:make-quad-vertex-array-object
                 #:make-texture-vertex-array-object
                 #:with-bound-vertex-array)
-  (:import-from :slither/utils
-                #:defmemo)
   (:import-from :slither/assets
                 #:defasset)
   (:export #:set-camera-position
@@ -59,7 +59,8 @@
 
   (defun eval-on-init ()
     (loop for function in *eval-on-init*
-          do (funcall function))
+          do (restart-case (funcall function)
+               (skip () :report "Skip current function")))
     (setf *initialized* t))
 
   (defmacro delay-evaluation (&body body)
@@ -98,29 +99,52 @@
                                           :uniform-symbols ,uniforms
                                           :on-bind ,on-bind
                                           :on-render ,on-render)))))
-  
+
   (defmacro define-vertex-array-object (name &body body)
     `(progn
        (defvar ,name nil)
        (delay-evaluation
          (setf ,name (progn ,@body)))))
-  
+
   (defmacro define-texture (name file)
     `(progn
-       (defvar ,name nil)
-       (defasset ,name ,file :png) 
+       (defvar ,name (make-instance 'texture))
+       (defasset ,name ,file :png)
        (delay-evaluation
-         (setf ,name (make-instance 'texture :asset ',name)))))
+         (setf (texture-asset ,name) ',name))))
 
   (defmacro define-array-texture (name file &key width height)
     `(progn
        (defvar ,name nil)
-       (defasset ,name ,file :png) 
+       (defasset ,name ,file :png)
        (delay-evaluation
          (setf ,name (make-instance 'array-texture
                                     :asset ',name
                                     :width ,width
                                     :height ,height))))))
+
+(defun m3rotate (degrees)
+  (let ((cosine (cos (degrees->radians degrees)))
+        (sine (sin (degrees->radians degrees))))
+    (mat3 cosine (- sine) 0
+          sine cosine 0
+          0 0 1)))
+
+(defvar *view-matrix* nil)
+(defun set-camera-position (position &key
+                                     (zoom 1.0)
+                                     (aspect-ratio (/ slither/window:*window-width* slither/window:*window-height*))
+                                     (rotation 0))
+  (let ((zoom (if (< zoom 0)
+                  0
+                  zoom)))
+    (setf *view-matrix*
+          (nm*
+           (mscaling (vec2 (/ zoom aspect-ratio) zoom))
+           (m3rotate (- 360 rotation))
+           (mtranslation
+            (v* position -1))))))
+
 
 (define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
 (define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
@@ -182,19 +206,6 @@
   (gl:enable :blend)
   (gl:blend-func :src-alpha :one-minus-src-alpha))
 
-(defvar *view-matrix* nil)
-(defun set-camera-position (position &optional
-                                     (zoom 1.0)
-                                     (aspect (/ slither/window:*window-width* slither/window:*window-height*)))
-  (let ((zoom (if (< zoom 0)
-                  0
-                  zoom)))
-  (setf *view-matrix*
-        (nm*
-         (mscaling (vec2 (/ zoom aspect) zoom))
-         (mtranslation
-          (v* position -1))))))
-
 (defun screen-space-position (vector)
   (m* (minv *view-matrix*) vector))
 
@@ -223,7 +234,8 @@
                                                  :layer layer
                                                  :depth depth)))
 
-(defun draw-texture (position size texture &key (shader-program texture-shader-program)
+(defun draw-texture (position size texture &key (rotation 0)
+                                                (shader-program texture-shader-program)
                                                 (vao texture-vertex-array)
                                                 (texture-scale (vec2 1.0 1.0))
                                                 (layer 0)
@@ -233,8 +245,9 @@
                                                  :texture-id (texture-id texture)
                                                  :layer layer
                                                  :depth depth)
-                :model-matrix (nm* (mtranslation position)
-                                   (mscaling size))
+                :model-matrix (nm* (mscaling size)
+                                   (mtranslation position)
+                                   (m3rotate rotation))
                 :texture-scale texture-scale))
 
 (defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
@@ -269,7 +282,8 @@
 (defvar *drawcall-buffer*
   (make-array 32768
               :element-type 'drawcall
-              :initial-element (make-drawcall)
+              :initial-contents (loop repeat 32768
+                                      collect (make-drawcall))
               :fill-pointer 0
               :adjustable nil))
 
@@ -292,7 +306,7 @@
       (key-insert-field layer 8)
       key)))
 
-(declaim (ftype (function (drawcall-key) (values (unsigned-byte 8) 
+(declaim (ftype (function (drawcall-key) (values (unsigned-byte 8)
                                                  (unsigned-byte 8)
                                                  (unsigned-byte 8)
                                                  (unsigned-byte 8)
