@@ -96,12 +96,12 @@
       :accessor rectangle-depth
       :initform 0
       :initarg :depth))
-  (:tick (rectangle entity)
+  (:tick
    (with-accessors ((position transform-position)
                     (size transform-size))
-       entity
-     (draw-rectangle position size (rectangle-color rectangle)
-                     :depth (rectangle-depth rectangle)))))
+       *entity*
+     (draw-rectangle position size (rectangle-color *behavior*)
+                     :depth (rectangle-depth *behavior*)))))
 
 (defbehavior sprite
     ((texture
@@ -111,13 +111,13 @@
       :accessor sprite-depth
       :initform 0
       :initarg :depth))
-  (:tick (sprite entity)
+  (:tick
    (with-accessors ((position transform-position)
                     (size transform-size))
-       entity
-     (draw-texture position size (sprite-texture sprite)
-                   :rotation (transform-rotation entity)
-                   :depth (sprite-depth sprite)))))
+       *entity*
+     (draw-texture position size (sprite-texture *behavior*)
+                   :rotation (transform-rotation *entity*)
+                   :depth (sprite-depth *behavior*)))))
 
 (defbehavior move
     ((dx
@@ -135,8 +135,8 @@
       :initarg :speed
       :initform 1.0
       :type single-float))
-  (:tick (move entity)
-   (with-slots (dx dy speed) move
+  (:tick
+   (with-slots (dx dy speed) *behavior*
      (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
      (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
      (incf dx (+ (if (key-held-p :d)
@@ -151,7 +151,7 @@
                  (if (key-held-p :s)
                      (* speed -1)
                      0)))
-     (with-accessors ((position transform-position)) entity
+     (with-accessors ((position transform-position)) *entity*
        (incf (vx position) (* dx (coerce *dt* 'single-float)))
        (incf (vy position) (* dy (coerce *dt* 'single-float)))))))
 
@@ -160,8 +160,8 @@
       :initform 1.0
       :accessor camera-zoom
       :initarg :zoom))
-  (:tick (camera entity)
-   (with-accessors ((zoom camera-zoom)) camera
+  (:tick
+   (with-accessors ((zoom camera-zoom)) *behavior*
      (when (key-held-p :i)
        (incf zoom
              *dt*))
@@ -169,16 +169,16 @@
                 (> zoom 0.01))
        (decf zoom
              *dt*))
-     (set-camera-position (transform-position entity)
+     (set-camera-position (transform-position *entity*)
                           :zoom zoom
-                          :rotation (transform-rotation entity)))))
+                          :rotation (transform-rotation *entity*)))))
 
 (defbehavior follow
     ((target
       :initarg :target))
-  (:tick (follow entity)
-   (with-slots (target) follow
-     (with-accessors ((position transform-position)) entity
+  (:tick
+   (with-slots (target) *behavior*
+     (with-accessors ((position transform-position)) *entity*
        (setf position (transform-position target))))))
 
 (defbehavior speaker
@@ -188,8 +188,8 @@
 
 (defbehavior listener
     ()
-  (:tick (listener entity)
-   (setf (listener-position) (transform-position entity))))
+  (:tick
+   (setf (listener-position) (transform-position *entity*))))
 
 (defmethod speaker-play ((speaker speaker) (entity entity))
   (sound-play (speaker-sound speaker)
