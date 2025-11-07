@@ -1,4 +1,4 @@
-(uiop:define-package #:slither/collisions
+(uiop:define-package #:slither/physics
   (:use #:cl
         #:slither/utils
         #:slither/behaviors
@@ -10,7 +10,7 @@
            :rigidbody-drag
            :rigidbody-velocity+))
 
-(in-package #:slither/collisions)
+(in-package #:slither/physics)
 
 (declaim (ftype (function (vec2 float vec2 float) boolean) circle-collision-p))
 (defun circle-collision-p (circle1-position circle1-radius

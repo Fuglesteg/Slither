@@ -10,7 +10,7 @@
                  #:slither/entities
                  #:slither/behaviors
                  #:slither/scenes
-                 #:slither/collisions)
+                 #:slither/physics)
   (:import-from #:slither/render/uniform
                 #:uniform-value
                 #:uniform-location)
