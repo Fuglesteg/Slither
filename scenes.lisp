@@ -1,16 +1,65 @@
 (defpackage #:slither/scenes
-  (:use #:cl 
-        #:slither/utils)
-  (:import-from #:slither/entities
-                #:start
-                #:tick)
+  (:use #:cl
+        #:slither/utils
+        #:slither/entities)
   (:export #:defscene
            #:scene-reset
-           #:scene-switch))
+           #:entities-find-entity
+           #:entities-find-entities
+           #:behaviors-of-type
+           #:add-entity
+           #:spawn-entity
+           #:remove-entity
+           #:update-entities
+           #:update-scene
+           #:current-scene))
 
 (in-package #:slither/scenes)
 
 (defvar *scene* nil)
+
+(defun current-scene ()
+  *scene*)
+
+(defun update-scene ()
+  (when (current-scene)
+    (tick (current-scene))))
+
+(defun (setf current-scene) (new-scene)
+  (setf *scene* new-scene)
+  (scene-switch *scene*))
+
+(defun entities-find-entity (entity-type)
+  (find entity-type (scene-entities *scene*)
+        :key #'type-of))
+
+(defun entities-find-entities (entity-type)
+  (remove-if-not (lambda (entity)
+                   (typep entity entity-type))
+                 (scene-entities *scene*)))
+
+(defun behaviors-of-type (type)
+  (loop for entity in (scene-entities *scene*)
+        append (loop for behavior in (entity-behaviors entity)
+                     when (typep behavior type)
+                     collect behavior)))
+
+(defun add-entity (&rest entities)
+  (dolist (entity entities)
+    (push entity (scene-entities *scene*))
+    (start entity)))
+
+(defun spawn-entity (name &rest initargs)
+  (add-entity (apply #'make-instance name initargs)))
+
+(defun remove-entity (&rest entities)
+  (dolist (entity entities)
+    (setf (scene-entities *scene*)
+          (remove entity (scene-entities *scene*)))))
+
+(defun update-entities ()
+  (loop for entity in (scene-entities *scene*)
+        do (tick entity)))
 
 (defclass scene ()
   ((entities
@@ -28,7 +77,6 @@
   (:method ((scene scene))
     (unless (scene-entities scene)
       (scene-reset scene))
-    (setf slither/entities::*entities* (scene-entities scene))
     (scene-on-switch scene))
   (:method ((scene symbol))
     (scene-switch (make-instance scene))))
@@ -39,11 +87,16 @@
 (defgeneric scene-make-initial-entities (scene)
   (:method ((scene scene)) nil))
 
+(defmethod tick :before ((scene scene))
+  (update-entities))
+
 (defmethod tick ((scene scene)))
 
-(defmethod start ((scene scene))
+(defmethod start :before ((scene scene))
   (loop for entity in (scene-entities scene)
         do (start entity)))
+
+(defmethod start ((scene scene)))
 
 (defmacro defscene (name slots &body sections)
   `(progn

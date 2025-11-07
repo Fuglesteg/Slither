@@ -13,54 +13,15 @@
            #:transform-size
            #:transform-rotation
            #:entity-find-behavior
-           #:add-entity
-           #:spawn-entity
-           #:append-entity
-           #:remove-entity
-           #:entities-find-entity
-           #:entities-find-entities
            #:transform-distance
-           #:update-entities
+           #:entity-behaviors
            #:behavior-required-behaviors
            #:with-behaviors
-           #:*entity*
-           #:behaviors-of-type))
+           #:*entity*))
 
 (in-package #:slither/entities)
 
-(defvar *entities* '())
 (defvar *entity* nil)
-
-(defun entities-find-entity (entity-type)
-  (find entity-type *entities*
-        :key #'type-of))
-
-(defun entities-find-entities (entity-type)
-  (remove-if-not (lambda (entity)
-                   (typep entity entity-type))
-                 *entities*))
-
-(defun behaviors-of-type (type)
-  (loop for entity in *entities*
-        append (loop for behavior in (entity-behaviors entity)
-                     when (typep behavior type)
-                     collect behavior)))
-
-(defun update-entities ()
-  (loop for entity in *entities*
-        do (tick entity)))
-
-(defun add-entity (&rest entities)
-  (dolist (entity entities)
-    (push entity *entities*)
-    (start entity)))
-
-(defun spawn-entity (name &rest initargs)
-  (add-entity (apply #'make-instance name initargs)))
-
-(defun remove-entity (&rest entities)
-  (dolist (entity entities)
-    (setf *entities* (remove entity *entities*))))
 
 (defclass transform ()
   ((position
@@ -90,7 +51,7 @@
 (defun rotate (degrees)
   (incf (transform-rotation *entity*) degrees))
 
-(defclass entity (transform) 
+(defclass entity (transform)
   ((behaviors
     :accessor entity-behaviors
     :initarg :behaviors)))

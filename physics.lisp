@@ -3,6 +3,7 @@
         #:slither/utils
         #:slither/behaviors
         #:slither/entities
+        #:slither/scenes
         #:org.shirakumo.fraf.math.vectors)
   (:export :circle-collider
            :rigidbody
@@ -61,7 +62,7 @@
           (v* (rigidbody-velocity *behavior*)
               (vabs (rigidbody-velocity *behavior*))
               (- (rigidbody-drag *behavior*))
-              slither:*dt*))
+              slither/window:*dt*))
 
 
    ; Collisions
