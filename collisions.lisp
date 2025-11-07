@@ -57,7 +57,12 @@
            (list collider))))
   (:tick
    ; Drag
-   (vdecf (rigidbody-velocity *behavior*) (rigidbody-drag *behavior*))
+   (vdecf (rigidbody-velocity *behavior*)
+          (v* (rigidbody-velocity *behavior*)
+              (vabs (rigidbody-velocity *behavior*))
+              (- (rigidbody-drag *behavior*))
+              slither:*dt*))
+
 
    ; Collisions
    (loop for this-collider in (slot-value *behavior* 'colliders)
@@ -81,9 +86,10 @@
                        (when (< distance total-size)
                          ;; Collision resolution
                          ; Set position of object to edge
-                         #+nil(setf (transform-position *entity*)
-                               (vscale normalized-offset
-                                       (- total-size)))
+                         (setf (transform-position *entity*)
+                               (v- (transform-position (behavior-entity foreign-collider))
+                                   (v* normalized-offset
+                                       total-size)))
 
                          (let* ((this-mass (rigidbody-mass *behavior*))
                                 (this-inverse-mass (if (= this-mass 0.0)
