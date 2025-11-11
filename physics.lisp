@@ -6,18 +6,49 @@
         #:slither/scenes
         #:org.shirakumo.fraf.math.vectors)
   (:export :circle-collider
+           :circle-collision-p
            :rigidbody
            :rigidbody-velocity
            :rigidbody-drag
-           :rigidbody-velocity+))
+           :rigidbody-velocity+
+           :point-collides-p
+           :circle-overlaps-point-p
+           :circle-collisions))
 
 (in-package #:slither/physics)
 
 (declaim (ftype (function (vec2 float vec2 float) boolean) circle-collision-p))
 (defun circle-collision-p (circle1-position circle1-radius
                            circle2-position circle2-radius)
-  (<= (vlength (v- circle1-position circle2-position))
+  (< (vlength (v- circle1-position circle2-position))
       (+ circle1-radius circle2-radius)))
+
+(defun circle-overlaps-point-p (circle-position circle-radius point)
+  (< (vlength (v- point circle-position))
+     circle-radius))
+
+(defun circle-collides-p (circle-position circle-radius)
+  (loop for circle-collider in (behaviors-of-type 'circle-collider)
+        do (when (circle-collision-p circle-position
+                                     circle-radius
+                                     (transform-position (behavior-entity circle-collider))
+                                     (circle-radius circle-collider))
+             (return circle-collider))))
+
+(defun circle-collisions (circle-position circle-radius)
+  (loop for circle-collider in (behaviors-of-type 'circle-collider)
+        when (circle-collision-p circle-position
+                                    circle-radius
+                                    (transform-position (behavior-entity circle-collider))
+                                    (circle-radius circle-collider))
+        collect circle-collider))
+
+(defun point-collides-p (point)
+  (loop for circle-collider in (behaviors-of-type 'circle-collider)
+        do (when (circle-overlaps-point-p (transform-position (behavior-entity circle-collider))
+                                          (circle-radius circle-collider)
+                                          point)
+             (return circle-collider))))
 
 (defbehavior circle-collider
     ()
@@ -64,7 +95,6 @@
               (- (rigidbody-drag *behavior*))
               slither/window:*dt*))
 
-
    ; Collisions
    (loop for this-collider in (slot-value *behavior* 'colliders)
          do (loop for foreign-collider in
@@ -77,14 +107,14 @@
                   do (let* ((offset (v- (transform-position (behavior-entity foreign-collider))
                                         (transform-position *entity*)))
                             (distance (vlength offset))
-                            (normalized-offset (if (= (vlength offset) 0)
-                                                   (vec2 0 1)
-                                                   (v/ offset distance)))
                             (total-size (+ (circle-radius this-collider)
                                            (circle-radius foreign-collider))))
 
                        ; Collision detection
                        (when (< distance total-size)
+                         (let ((normalized-offset (if (= (vlength offset) 0)
+                                                      (vec2 0 1)
+                                                      (v/ offset distance))))
                          ;; Collision resolution
                          ; Set position of object to edge
                          (setf (transform-position *entity*)
@@ -111,8 +141,8 @@
                                 (foreign-velocity (if foreign-rigidbody
                                                       (rigidbody-velocity foreign-rigidbody)
                                                       (vec2)))
-                                (static-friction 1)
-                                (dynamic-friction 1)
+                                (static-friction 0.1)
+                                (dynamic-friction 1.0)
                                 (relative-velocity (v- foreign-velocity
                                                        (rigidbody-velocity *behavior*)))
                                 (velocity-along-normal (v. relative-velocity
@@ -153,7 +183,7 @@
                                (when foreign-rigidbody
                                  (setf (rigidbody-velocity foreign-rigidbody)
                                        (v+ (rigidbody-velocity foreign-rigidbody)
-                                           (v* friction-impulse foreign-inverse-mass)))))))))))
+                                           (v* friction-impulse foreign-inverse-mass))))))))))))
 
    ; Update position
    (move (rigidbody-velocity *behavior*)))

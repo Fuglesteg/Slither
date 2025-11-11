@@ -1,5 +1,5 @@
 (uiop:define-package #:slither/utils
-  (:use #:cl 
+  (:use #:cl
         #:org.shirakumo.fraf.math.vectors)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export :continuable
@@ -17,7 +17,9 @@
            :lambda-list-bindings
            :vec2->rotation
            :mat2->mat3
-           :safe-vscale))
+           :safe-vscale
+           :lerp
+           :rotation-lerp))
 
 (in-package #:slither/utils)
 
@@ -45,6 +47,17 @@
   (let ((value (clamp (/ (- value edge0) (- edge1 edge0)) 0 1)))
     (* value value (- 3.0 (* 2.0 value)))))
 
+(defun lerp (start end step)
+  (+ (* (- end start) (clamp step 0 1))
+     start))
+
+(defun rotation-lerp (start end step)
+  (let ((diff (- (mod (+ (- end start) 540) 360) 180)))
+    (mod (+ start
+            (* diff step)
+            360)
+         360)))
+
 (defun symbol->camel-case (symbol)
    (loop for character across (string symbol)
          with should-capitalize = nil
@@ -63,13 +76,13 @@
        (progn ,@body)
      (continue () :report "Continue")))
 
+(defun degrees->radians (degrees)
+  (* degrees (/ pi 180)))
+
 (defun rotation->vec2 (degrees)
   (let ((radians (degrees->radians degrees)))
     (vec2 (cos radians)
           (sin radians))))
-
-(defun degrees->radians (degrees)
-  (* degrees (/ pi 180)))
 
 (defun random-float (&optional (range 1) (precision 10))
   (float (* (/ (random precision) precision) range)))
