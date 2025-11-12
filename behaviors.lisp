@@ -62,7 +62,7 @@
      (defclass ,name (behavior) ,slots)
      ,@(loop for (keyword-or-symbol . arguments) in sections
              collect
-                (cond 
+                (cond
                   ((string= keyword-or-symbol :tick)
                      `(defmethod tick ((,(gensym) ,name))
                           ,@arguments))
@@ -112,12 +112,11 @@
       :initform 0
       :initarg :depth))
   (:tick
-   (with-accessors ((position transform-position)
-                    (size transform-size))
-       *entity*
-     (draw-texture position size (sprite-texture *behavior*)
+     (draw-texture (transform-position *entity*)
+                   (transform-size *entity*)
+                   (sprite-texture *behavior*)
                    :rotation (transform-rotation *entity*)
-                   :depth (sprite-depth *behavior*)))))
+                   :depth (sprite-depth *behavior*))))
 
 (defbehavior move
     ((dx
