@@ -49,7 +49,8 @@
            #:define-fragment-shader
            #:define-shader-program
            #:define-texture
-           #:define-array-texture))
+           #:define-array-texture
+           :draw-circle))
 
 (in-package #:slither/render)
 
@@ -197,6 +198,21 @@
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
                      (uniform-value (get-uniform program 'texture-index)) (drawcall-data-texture-index drawcall-data))))
 
+(define-fragment-shader circle-fragment-shader
+  :path (asdf:system-relative-pathname :slither "./render/shaders/circle.frag"))
+
+(define-shader-program circle-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader circle-fragment-shader
+  :uniforms '(model-matrix
+              view-matrix
+              color)
+  :on-bind (lambda (program)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *view-matrix*))
+  :on-render (lambda (program drawcall-data)
+               (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
+                     (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data))))
+
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
@@ -225,6 +241,19 @@
                                    (mscaling size))
                 :color color))
 
+(defun draw-circle (position size color &key (shader-program circle-shader-program)
+                                             (vao texture-vertex-array)
+                                             (layer 0)
+                                             (depth 0))
+  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                 :vao vao
+                                                 :depth depth
+                                                 :layer layer)
+                :model-matrix (nm* (mtranslation position)
+                                   (mscaling size))
+                :color color))
+
+
 (defun draw-static (&key (shader-program static-shader-program)
                          (vao quad-vertex-array)
                          (depth 0)
@@ -245,8 +274,8 @@
                                                  :texture-id (texture-id texture)
                                                  :layer layer
                                                  :depth depth)
-                :model-matrix (nm* (mscaling size)
-                                   (mtranslation position)
+                :model-matrix (nm* (mtranslation position)
+                                   (mscaling size)
                                    (m3rotate rotation))
                 :texture-scale texture-scale))
 
