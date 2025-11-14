@@ -44,7 +44,7 @@
                         (:png (pngload:load-file path
                                                  :flatten t
                                                  :flip-y t))
-                        (:sound (harmony:create path))))))
+                        (:sound path)))))
 
 #+dev (defvar *file-paths* nil)
 #+dev (defun find-file-path (symbol)

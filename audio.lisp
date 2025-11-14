@@ -20,19 +20,37 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro defsound (name path)
     `(progn
-       (defvar ,name)
+       (defvar ,name (make-instance 'sound))
        (let ((function
                (lambda ()
                  (register-asset ',name ,path :sound)
-                 (setf ,name (slither/assets:asset-data ',name)))))
+                 (setf (sound-asset ,name)
+                       ',name))))
          (if *initialized*
              (funcall function)
              (push function *run-on-init*))))))
 
+(defclass sound ()
+  ((asset
+    :initarg :asset
+    :initform nil
+    :reader sound-asset)
+   (voice
+    :initarg :voice
+    :initform nil
+    :accessor sound-voice)))
+
+(defmethod (setf sound-asset) (new-asset (sound sound))
+  (setf (slot-value sound 'asset) new-asset)
+  (setf (sound-voice sound)
+        (harmony:create (slither/assets:asset-data new-asset))))
+
 (defun audio-init ()
+  (mixed:init)
   (harmony:maybe-start-simple-server
-   :mixers (list :music
-                 (cons :effect 'mixed:plane-mixer)))
+   :mixers (list
+            :music
+            (list :effect 'mixed:plane-mixer)))
   (loop for function in *run-on-init*
         do (funcall function))
   (setf *initialized* t)
@@ -46,15 +64,25 @@
 (defun (setf listener-position) (new-position)
   (setf *listener-position* new-position))
 
-(defun sound-play (sound &key position velocity)
+(defmethod sound-play ((sound sound) &key (position (vec2)) (velocity (vec2)))
+  (sound-play (sound-voice sound)
+              :position position
+              :velocity velocity))
+
+(defmethod sound-play ((sound harmony:voice) &key (position (vec2)) (velocity (vec2)))
   (harmony:play sound
                 :reset t
                 :location (with-vec (x y) (v- (v* position -1) (listener-position))
                             (list x y))
                 :velocity velocity))
 
-(defun sound-stop (sound)
+(defmethod sound-stop ((sound sound))
+  (sound-stop (sound-voice sound)))
+
+(defmethod sound-stop ((sound harmony:voice))
   (harmony:stop sound))
+
+#|
 
 (defclass sound ()
   ((file
@@ -151,3 +179,4 @@
 (defmethod sound->source ((sound sound) &rest initargs)
   (let ((source (apply #'make-instance 'sound-source :sound sound initargs)))
     source))
+|#

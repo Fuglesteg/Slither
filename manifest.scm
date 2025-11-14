@@ -1,5 +1,6 @@
 (use-modules (guix packages)
              (gnu packages linux)
+             (gnu packages audio)
              (gnu packages lisp)
              (gnu packages lisp-xyz)
              (gnu packages text-editors))
@@ -11,4 +12,5 @@
                                          (package-development-inputs slither)))
                             (list sbcl-micros
                                   alsa-lib
+                                  libmixed
                                   sbcl)))

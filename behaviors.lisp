@@ -130,7 +130,11 @@
     :reader transform-rotation
     :initarg :rotation)))
 
-(defun (setf transform-rotation) (new-value transform)
+(defmethod (setf transform-rotation) (new-value (entity entity))
+  (setf (transform-rotation (entity-find-behavior entity 'transform))
+        new-value))
+
+(defmethod (setf transform-rotation) (new-value (transform transform))
   (setf (slot-value transform 'rotation)
         (- new-value (* 360 (floor (/ new-value 360))))))
 
