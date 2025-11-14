@@ -38,9 +38,13 @@
     (:release (key-release key))))
 
 (defmethod glfw:mouse-button-changed ((window game-window) button action modifiers)
+  (let ((button (case button
+                  (:left :left-click)
+                  (:right :right-click)
+                  (:middle :middle-click))))
   (case action
     (:press (key-press button))
-    (:release (key-release button))))
+    (:release (key-release button)))))
 
 (defun key-press (key)
   (push (cons key :pressed) *keys*))

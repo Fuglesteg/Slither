@@ -6,14 +6,8 @@
         #:slither/render)
   (:export #:start
            #:tick
-           #:move
-           #:rotate
            #:defentity
-           #:transform-position
-           #:transform-size
-           #:transform-rotation
            #:entity-find-behavior
-           #:transform-distance
            #:entity-behaviors
            #:behavior-required-behaviors
            #:with-behaviors
@@ -23,35 +17,7 @@
 
 (defvar *entity* nil)
 
-(defclass transform ()
-  ((position
-    :initform (vec2 0.0)
-    :accessor transform-position
-    :initarg :position)
-   (size
-    :initform (vec2 1.0 1.0)
-    :accessor transform-size
-    :initarg :size)
-   (rotation
-    :initform 0
-    :reader transform-rotation
-    :initarg :rotation)))
-
-(defun (setf transform-rotation) (new-value transform)
-  (setf (slot-value transform 'rotation)
-        (- new-value (* 360 (floor (/ new-value 360))))))
-
-(defmethod transform-distance ((transform1 transform) (transform2 transform))
-  (vdistance (transform-position transform1)
-             (transform-position transform2)))
-
-(defun move (offset)
-  (nv+ (transform-position *entity*) offset))
-
-(defun rotate (degrees)
-  (incf (transform-rotation *entity*) degrees))
-
-(defclass entity (transform)
+(defclass entity ()
   ((behaviors
     :accessor entity-behaviors
     :initarg :behaviors)))

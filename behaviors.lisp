@@ -32,7 +32,14 @@
            #:directional-move
            #:sprite
            #:behavior-entity
-           #:*behavior*))
+           #:*behavior*
+           #:move
+           #:rotate
+           #:transform
+           #:transform-position
+           #:transform-size
+           #:transform-rotation
+           #:transform-distance))
 
 (in-package #:slither/behaviors)
 
@@ -60,6 +67,28 @@
 (defmacro defbehavior (name slots &body sections)
   `(progn
      (defclass ,name (behavior) ,slots)
+     ,@(let ((slot-accessors nil))
+         (flet ((make-reader (reader-symbol)
+                  `(defmethod ,reader-symbol ((entity entity))
+                     (,reader-symbol (entity-find-behavior entity ',name))))
+                (make-writer (writer-symbol)
+                  `(defmethod (setf ,writer-symbol) (new-value (entity entity))
+                    (setf (,writer-symbol (entity-find-behavior entity ',name))
+                          new-value))))
+         (loop for slot in slots
+               do (when (listp slot)
+                    (alexandria:when-let ((accessor-symbol (getf (rest slot) :accessor)))
+                      (push (make-reader accessor-symbol)
+                            slot-accessors)
+                      (push (make-writer accessor-symbol)
+                            slot-accessors))
+                    (alexandria:when-let ((reader-symbol (getf (rest slot) :reader)))
+                      (push (make-reader reader-symbol)
+                            slot-accessors))
+                    (alexandria:when-let ((writer-symbol (getf (rest slot) :writer)))
+                      (push (make-writer writer-symbol)
+                            slot-accessors)))))
+         slot-accessors)
      ,@(loop for (keyword-or-symbol . arguments) in sections
              collect
                 (cond
@@ -86,6 +115,35 @@
                               (call-next-method)))
                           (:method ((*behavior* ,name) ,@method-arguments)
                             ,@body))))))))
+
+(defbehavior transform
+  ((position
+    :initform (vec2 0.0)
+    :accessor transform-position
+    :initarg :position)
+   (size
+    :initform (vec2 1.0 1.0)
+    :accessor transform-size
+    :initarg :size)
+   (rotation
+    :initform 0
+    :reader transform-rotation
+    :initarg :rotation)))
+
+(defun (setf transform-rotation) (new-value transform)
+  (setf (slot-value transform 'rotation)
+        (- new-value (* 360 (floor (/ new-value 360))))))
+
+(defmethod transform-distance ((transform1 transform) (transform2 transform))
+  (vdistance (transform-position transform1)
+             (transform-position transform2)))
+
+(defun move (offset)
+  (nv+ (transform-position *entity*) offset))
+
+(defun rotate (degrees)
+  (incf (transform-rotation *entity*) degrees))
+
 
 (defbehavior rectangle
     ((color
