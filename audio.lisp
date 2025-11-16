@@ -74,7 +74,8 @@
                 :reset t
                 :location (with-vec (x y) (v- (v* position -1) (listener-position))
                             (list x y))
-                :velocity velocity))
+                :velocity (list (vx velocity)
+                                (vy velocity))))
 
 (defmethod sound-stop ((sound sound))
   (sound-stop (sound-voice sound)))
