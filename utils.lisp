@@ -24,9 +24,10 @@
 (in-package #:slither/utils)
 
 (defun safe-vscale (a s)
-  (if (= (+ (vx a) (vy a)) 0)
-      a
-      (vscale a s)))
+  (let ((sum (+ (vx a) (vy a))))
+    (if (< -1.0e-24 sum 1.0e-24)
+        a
+        (vscale a s))))
 
 (defmacro defmemo (name &body body)
   (let ((memo (gensym "MEMO")))
