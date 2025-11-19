@@ -3,6 +3,7 @@
         #:slither/utils
         #:slither/entities)
   (:export #:defscene
+           #:scene
            #:scene-reset
            #:entities-find-entity
            #:entities-find-entities
@@ -12,7 +13,9 @@
            #:remove-entity
            #:update-entities
            #:update-scene
-           #:current-scene))
+           #:current-scene
+           #:scene-values
+           #:scene-value))
 
 (in-package #:slither/scenes)
 
@@ -66,7 +69,12 @@
     :initarg :entities
     :initform nil
     :accessor scene-entities
-    :type list)))
+    :type list)
+   (values
+    :initarg :values
+    :initform (make-hash-table)
+    :accessor scene-values
+    :type hash-table)))
 
 (defgeneric scene-reset (scene)
   (:method ((scene scene))
@@ -86,6 +94,12 @@
 
 (defgeneric scene-make-initial-entities (scene)
   (:method ((scene scene)) nil))
+
+(defun scene-value (scene key)
+  (values (gethash key (slot-value scene 'values))))
+
+(defun (setf scene-value) (new-value scene key)
+  (setf (gethash key (slot-value scene 'values)) new-value))
 
 (defmethod tick :before ((scene scene))
   (update-entities))
