@@ -148,7 +148,6 @@
 (defun rotate (degrees)
   (incf (transform-rotation *entity*) degrees))
 
-
 (defbehavior rectangle
     ((color
       :accessor rectangle-color
@@ -158,6 +157,7 @@
       :accessor rectangle-depth
       :initform 0
       :initarg :depth))
+  (:required-behaviors transform)
   (:tick
    (with-accessors ((position transform-position)
                     (size transform-size))
@@ -173,6 +173,7 @@
       :accessor sprite-depth
       :initform 0
       :initarg :depth))
+  (:required-behaviors transform)
   (:tick
      (draw-texture (transform-position *entity*)
                    (transform-size *entity*)
@@ -196,6 +197,7 @@
       :initarg :speed
       :initform 1.0
       :type single-float))
+  (:required-behaviors transform)
   (:tick
    (with-slots (dx dy speed) *behavior*
      (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
@@ -245,16 +247,14 @@
 (defbehavior speaker
     ((sound
       :initarg :sound
-      :accessor speaker-sound)))
+      :accessor speaker-sound))
+  (:speaker-play ()
+   (sound-play (speaker-sound *behavior*)
+               :position (transform-position *entity*)))
+  (:speaker-stop ()
+   (sound-stop (speaker-sound *behavior*))))
 
 (defbehavior listener
     ()
   (:tick
    (setf (listener-position) (transform-position *entity*))))
-
-(defmethod speaker-play ((speaker speaker) (entity entity))
-  (sound-play (speaker-sound speaker)
-              :position (transform-position entity)))
-
-(defmethod speaker-stop ((speaker speaker))
-  (sound-stop (speaker-sound speaker)))

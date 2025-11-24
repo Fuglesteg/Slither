@@ -8,11 +8,14 @@
 
 (defentity player ()
   (:behaviors
-   #+nil(sprite :texture player-icon)
+   transform
+   (sprite :texture player-icon)
    move
-   rectangle
    camera))
 
+(defscene sprite-example ()
+  (:entities player))
+
 (defun start-example ()
-  (spawn-entity 'player)
+  (setf (current-scene) (make-instance 'sprite-example))
   (start-game))

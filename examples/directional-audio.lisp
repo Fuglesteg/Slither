@@ -7,6 +7,7 @@
 (defentity player
     ()
   (:behaviors
+   transform
    listener
    camera
    rectangle
@@ -17,14 +18,15 @@
 (defentity boombox
     ()
   (:behaviors
-   (speaker :sound (slither/assets:asset-data 'woosh))
+   transform
+   (speaker :sound woosh)
    rectangle)
-  (:tick boombox
-   (let ((speaker (entity-find-behavior boombox 'speaker)))
-     (when speaker
-       (cond ((key-pressed-p :p) (speaker-play speaker boombox)))))))
+  (:tick
+   (cond ((key-pressed-p :p) (speaker-play *entity*)))))
+
+(defscene directional-audio-example ()
+  (:entities boombox player))
 
 (defun start-example ()
-  (spawn-entity 'player)
-  (spawn-entity 'boombox)
+  (setf (current-scene) (make-instance 'directional-audio-example))
   (start-game))
