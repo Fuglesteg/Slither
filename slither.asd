@@ -5,6 +5,7 @@
   :version "0.0.2"
   :depends-on (#:cl-opengl
                #:3d-math
+               #:ieee-floats
                #:glfw
                #:pngload
                #:harmony
@@ -17,6 +18,13 @@
                #:serapeum)
   :serial t
   :components ((:file "utils")
+               (:file "serialization")
+               (:module "core"
+                :serial t
+                :components
+                ((:file "package")
+                 (:file "entities")
+                 (:file "behaviors")))
                (:file "assets")
                (:file "audio")
                (:file "window")
@@ -31,8 +39,8 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
-               (:file "entities")
                (:file "behaviors")
                (:file "scenes")
+               (:file "networking")
                (:file "physics")
                (:file "slither")))

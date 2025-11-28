@@ -20,6 +20,7 @@
             sbcl-static-vectors
             sbcl-file-notify
             sbcl-pngload
+            sbcl-ieee-floats
             sbcl-alexandria
             sbcl-serapeum))
    (synopsis "") (description "") (home-page "") (license licenses:gpl3+)))

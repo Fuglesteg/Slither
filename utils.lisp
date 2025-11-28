@@ -1,5 +1,6 @@
 (uiop:define-package #:slither/utils
   (:use #:cl
+        #:org.shirakumo.fraf.math.matrices
         #:org.shirakumo.fraf.math.vectors)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export :continuable
@@ -19,7 +20,9 @@
            :mat2->mat3
            :safe-vscale
            :lerp
-           :rotation-lerp))
+           :rotation-lerp
+           :vector-read-integer
+           :integer->byte-array))
 
 (in-package #:slither/utils)
 
@@ -134,3 +137,21 @@
     (keyword (intern (symbol-name symbol)))
     (symbol symbol)
     (string (intern symbol))))
+
+(declaim (ftype (function ((vector (unsigned-byte 8)) &key (:bytes integer)) integer)
+                vector-read-integer))
+(defun vector-read-integer (vector &key (bytes 1))
+  "Read the amount of bytes from vector as one integer"
+  (apply #'logior (loop for byte below bytes
+                        collect (ash (aref vector byte) (- (* (1- bytes) 8)
+                                                           (* byte 8))))))
+
+(declaim (ftype (function (integer) (vector (unsigned-byte 8) 4))
+                integer->byte-array))
+(defun integer->byte-array (integer)
+  (make-array 4
+              :element-type '(unsigned-byte 8)
+              :initial-contents (list (ldb (byte 8 24) integer)
+                                      (ldb (byte 8 16) integer)
+                                      (ldb (byte 8 8) integer)
+                                      (ldb (byte 8 0) integer))))

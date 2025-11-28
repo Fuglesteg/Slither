@@ -2,7 +2,7 @@
   (:use #:cl
         #:slither/utils
         #:slither/behaviors
-        #:slither/entities
+        #:slither/core
         #:slither/scenes
         #:org.shirakumo.fraf.math.vectors)
   (:export :circle-collider
@@ -52,8 +52,8 @@
 
 (defbehavior circle-collider
     ()
-  (:circle-radius ()
-     (vx (transform-size *entity*)))
+  (:circle-radius (&optional (circle *behavior*))
+     (vx (transform-size circle)))
   (:circle-collider-collision-p (circle)
    (with-behaviors ((() (circle1-collider circle-collider))
                     (((circle1-position position)) (circle1-transform transform))) circle
@@ -63,26 +63,10 @@
 
 (defbehavior rigidbody
     (colliders
-     (mass
-      :accessor rigidbody-mass
-      :initarg :mass
-      :initform 1.0
-      :type float)
-     (bounciness
-      :accessor rigidbody-bounciness
-      :initarg bounciness
-      :initform 0.0
-      :type float)
-     (drag
-      :accessor rigidbody-drag
-      :initarg :drag
-      :initform 0.0
-      :type float)
-     (velocity
-      :accessor rigidbody-velocity
-      :initarg :velocity
-      :initform (vec2)
-      :type vec2))
+     (mass :init 1.0)
+     (bounciness :init 0.0)
+     (drag :init 0.0)
+     (velocity :init (vec2)))
   (:required-behaviors
    transform)
   (:start
@@ -97,8 +81,8 @@
               (- (rigidbody-drag *behavior*))
               slither/window:*dt*))
 
-   ;;; Collisions
-   (loop for this-collider in (slot-value *behavior* 'colliders)
+   ;; Collisions
+   (loop for this-collider in (rigidbody-colliders)
          do (loop for foreign-collider in
                      ;; Make sure the collision check doesn't run on a collider on current entity
                      (remove-if-not
