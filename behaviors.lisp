@@ -64,71 +64,100 @@
     (declare (special *behavior*))
     (call-next-method)))
 
+(defmacro define-behavior-accessor (behavior slot-name)
+  (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name)))))
+    `(progn
+       (defun ,accessor-symbol (&optional (behavior (or *behavior*
+                                                     (entity-find-behavior *entity* ',behavior))))
+         (slot-value behavior ',slot-name))
+       (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior*
+                                                                      (entity-find-behavior *entity* ',behavior))))
+         (setf (slot-value behavior ',slot-name) new-value)))))
+
+(defmacro define-behavior-method (behavior name method-arguments &body body)
+  `(defun ,name ,method-arguments
+       (let ((*behavior* (or *behavior*
+                             (entity-find-behavior *entity* ',behavior))))
+         ,@body)))
+
+(defun behavior-invoke (behavior method &rest arguments)
+  (let ((*behavior* behavior)
+        (*entity* (behavior-entity behavior)))
+    (apply method arguments)))
+
+(defgeneric behavior-encode (behavior))
+(defgeneric behavior-decode (behavior-symbol behavior-vector entity))
+
 (defmacro defbehavior (name slots &body sections)
-  `(progn
-     (defclass ,name (behavior) ,slots)
-     ,@(let ((slot-accessors nil))
-         (flet ((make-reader (reader-symbol)
-                  `(defmethod ,reader-symbol ((entity entity))
-                     (,reader-symbol (entity-find-behavior entity ',name))))
-                (make-writer (writer-symbol)
-                  `(defmethod (setf ,writer-symbol) (new-value (entity entity))
-                    (setf (,writer-symbol (entity-find-behavior entity ',name))
-                          new-value))))
-         (loop for slot in slots
-               do (when (listp slot)
-                    (alexandria:when-let ((accessor-symbol (getf (rest slot) :accessor)))
-                      (push (make-reader accessor-symbol)
-                            slot-accessors)
-                      (push (make-writer accessor-symbol)
-                            slot-accessors))
-                    (alexandria:when-let ((reader-symbol (getf (rest slot) :reader)))
-                      (push (make-reader reader-symbol)
-                            slot-accessors))
-                    (alexandria:when-let ((writer-symbol (getf (rest slot) :writer)))
-                      (push (make-writer writer-symbol)
-                            slot-accessors)))))
-         slot-accessors)
-     ,@(loop for (keyword-or-symbol . arguments) in sections
-             collect
-                (cond
-                  ((string= keyword-or-symbol :tick)
-                     `(defmethod tick ((,(gensym) ,name))
-                          ,@arguments))
-                  ((string= keyword-or-symbol :start)
-                     `(defmethod start ((,(gensym) ,name))
-                          ,@arguments))
-                  ((string= keyword-or-symbol :required-behaviors)
-                   `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
-                      (quote ,arguments)))
-                  (t (destructuring-bind (method-arguments . body) arguments
-                       `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
-                          (:method ((entity entity) ,@method-arguments)
-                            (,(ensure-non-keyword-symbol keyword-or-symbol)
-                             (entity-find-behavior entity ',name)
-                             ,@(lambda-list-bindings method-arguments)))
-                          (:method :around ((*behavior* ,name) ,@method-arguments)
-                            (declare (special *behavior*)
-                                     (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
-                                                              (lambda-list-bindings method-arguments))))
-                            (let ((*entity* (behavior-entity *behavior*)))
-                              (call-next-method)))
-                          (:method ((*behavior* ,name) ,@method-arguments)
-                            ,@body))))))))
+  (let (methods clos-slots slot-symbols)
+    (loop for slot in slots
+          do (if (symbolp slot)
+                 (progn (push slot slot-symbols)
+                        (push (list slot
+                                    :initarg (intern (symbol-name slot) :keyword))
+                              clos-slots))
+                 (destructuring-bind (symbol &optional default-value) slot
+                   (push symbol
+                         slot-symbols)
+                   (push (list symbol :initform default-value :initarg (intern (symbol-name symbol) :keyword))
+                         clos-slots))))
+    (setf slot-symbols (nreverse slot-symbols))
+    (setf clos-slots (nreverse clos-slots))
+    (loop for (keyword-or-symbol . arguments) in sections
+          collect
+             (cond
+               ((string= keyword-or-symbol :tick)
+                (push
+                `(defmethod tick ((,(gensym) ,name))
+                   ,@arguments)
+                methods))
+               ((string= keyword-or-symbol :start)
+                (push
+                `(defmethod start ((,(gensym) ,name))
+                   ,@arguments)
+                methods))
+               ((string= keyword-or-symbol :required-behaviors)
+                (push
+                `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
+                   (quote ,arguments))
+                methods))
+               (t (destructuring-bind (method-arguments . body) arguments
+                    (push
+                     `(define-behavior-method ,name ,(ensure-non-keyword-symbol keyword-or-symbol) ,method-arguments
+                        ,@body)
+                     methods)))))
+    `(progn
+       (defclass ,name (behavior) ,clos-slots)
+       (defmethod behavior-encode ((behavior ,name))
+         (let ((behavior-data (apply #'concatenate
+                                     '(vector (unsigned-byte 8))
+                                     (mapcar
+                                      #'slither/networking::encode-argument
+                                      (list ,@(loop for slot in slot-symbols
+                                                    collect `(slot-value behavior ',slot)))))))
+           (concatenate
+            '(vector (unsigned-byte 8))
+            (let ((data-length (length behavior-data)))
+              (vector (ldb (byte 8 8) data-length)
+                      (ldb (byte 8 0) data-length)))
+            behavior-data)))
+       (defmethod behavior-decode ((behavior-symbol (eql ',name)) behavior-vector entity)
+         (let* ((behavior-size (vector-read-integer behavior-vector :bytes 2))
+                (arguments (slither/networking::decode-arguments (subseq behavior-vector 2 behavior-size))))
+           (values
+            (make-instance ',name
+                           :entity entity
+                           ,@(loop for slot-symbol in slot-symbols
+                                   for i from 0
+                                   append (list (intern (symbol-name slot-symbol) :keyword)
+                                                `(aref arguments ,i))))
+            (+ 2 behavior-size))))
+       ,@methods)))
 
 (defbehavior transform
-  ((position
-    :initform (vec2 0.0)
-    :accessor transform-position
-    :initarg :position)
-   (size
-    :initform (vec2 1.0 1.0)
-    :accessor transform-size
-    :initarg :size)
-   (rotation
-    :initform 0
-    :reader transform-rotation
-    :initarg :rotation)))
+  ((position (vec2 0.0))
+   (size (vec2 1.0 1.0))
+   (rotation 0)))
 
 (defmethod (setf transform-rotation) (new-value (entity entity))
   (setf (transform-rotation (entity-find-behavior entity 'transform))

@@ -5,6 +5,7 @@
   :version "0.0.2"
   :depends-on (#:cl-opengl
                #:3d-math
+               #:ieee-floats
                #:glfw
                #:pngload
                #:harmony
@@ -35,4 +36,5 @@
                (:file "behaviors")
                (:file "scenes")
                (:file "physics")
+               (:file "networking")
                (:file "slither")))

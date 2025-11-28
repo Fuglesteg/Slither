@@ -30,6 +30,9 @@
       (with-event-loop
         (input-poll)
         (update-scene)
+        (if (uiop:featurep :slither-server)
+            (slither/networking::flush-server-networking)
+            (slither/networking::flush-client-networking))
         (renderer-flush))))
 
 #+nil(defun start-game (&key window)
