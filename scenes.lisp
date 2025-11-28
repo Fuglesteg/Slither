@@ -1,7 +1,7 @@
 (defpackage #:slither/scenes
   (:use #:cl
         #:slither/utils
-        #:slither/entities)
+        #:slither/core)
   (:export #:defscene
            #:scene
            #:scene-reset

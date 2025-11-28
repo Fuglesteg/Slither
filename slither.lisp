@@ -3,11 +3,11 @@
   (:use-reexport #:org.shirakumo.fraf.math.vectors
                  #:org.shirakumo.fraf.math.matrices
                  #:slither/utils
+                 #:slither/core
                  #:slither/render
                  #:slither/window
                  #:slither/audio
                  #:slither/input
-                 #:slither/entities
                  #:slither/behaviors
                  #:slither/scenes
                  #:slither/physics)
@@ -30,6 +30,9 @@
       (with-event-loop
         (input-poll)
         (update-scene)
+        (if (uiop:featurep :slither-server)
+            (slither/networking::flush-server-networking)
+            (slither/networking::flush-client-networking))
         (renderer-flush))))
 
 #+nil(defun start-game (&key window)

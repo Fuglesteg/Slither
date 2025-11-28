@@ -3,17 +3,8 @@
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
         #:slither/utils
+        #:slither/core
         #:slither/render)
-  (:import-from #:slither/entities
-                #:entity
-                #:entity-find-behavior
-                #:behavior-required-behaviors
-                #:transform-size
-                #:transform-position
-                #:transform-rotation
-                #:start
-                #:tick
-                #:*entity*)
   (:import-from #:slither/input
                 #:key-held-p)
   (:import-from #:slither/window
@@ -22,8 +13,7 @@
                 #:sound-play
                 #:sound-stop
                 #:listener-position)
-  (:export #:defbehavior
-           #:speaker-play
+  (:export #:speaker-play
            #:speaker-stop
            #:listener
            #:speaker
@@ -31,8 +21,6 @@
            #:rectangle
            #:directional-move
            #:sprite
-           #:behavior-entity
-           #:*behavior*
            #:move
            #:rotate
            #:transform
@@ -43,100 +31,12 @@
 
 (in-package #:slither/behaviors)
 
-(defvar *behavior* nil)
-
-(defclass behavior ()
-  ((entity
-    :accessor behavior-entity
-    :initarg :entity
-    :initform (error "Entity is required")
-    :type entity)))
-
-(defgeneric tick (behavior)
-  (:method ((behavior behavior)))
-  (:method :around ((*behavior* behavior))
-    (declare (special *behavior*))
-    (call-next-method)))
-
-(defgeneric start (behavior)
-  (:method ((behavior behavior)))
-  (:method :around ((*behavior* behavior))
-    (declare (special *behavior*))
-    (call-next-method)))
-
-(defmacro defbehavior (name slots &body sections)
-  `(progn
-     (defclass ,name (behavior) ,slots)
-     ,@(let ((slot-accessors nil))
-         (flet ((make-reader (reader-symbol)
-                  `(defmethod ,reader-symbol ((entity entity))
-                     (,reader-symbol (entity-find-behavior entity ',name))))
-                (make-writer (writer-symbol)
-                  `(defmethod (setf ,writer-symbol) (new-value (entity entity))
-                    (setf (,writer-symbol (entity-find-behavior entity ',name))
-                          new-value))))
-         (loop for slot in slots
-               do (when (listp slot)
-                    (alexandria:when-let ((accessor-symbol (getf (rest slot) :accessor)))
-                      (push (make-reader accessor-symbol)
-                            slot-accessors)
-                      (push (make-writer accessor-symbol)
-                            slot-accessors))
-                    (alexandria:when-let ((reader-symbol (getf (rest slot) :reader)))
-                      (push (make-reader reader-symbol)
-                            slot-accessors))
-                    (alexandria:when-let ((writer-symbol (getf (rest slot) :writer)))
-                      (push (make-writer writer-symbol)
-                            slot-accessors)))))
-         slot-accessors)
-     ,@(loop for (keyword-or-symbol . arguments) in sections
-             collect
-                (cond
-                  ((string= keyword-or-symbol :tick)
-                     `(defmethod tick ((,(gensym) ,name))
-                          ,@arguments))
-                  ((string= keyword-or-symbol :start)
-                     `(defmethod start ((,(gensym) ,name))
-                          ,@arguments))
-                  ((string= keyword-or-symbol :required-behaviors)
-                   `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
-                      (quote ,arguments)))
-                  (t (destructuring-bind (method-arguments . body) arguments
-                       `(defgeneric ,(ensure-non-keyword-symbol keyword-or-symbol) (,name ,@method-arguments)
-                          (:method ((entity entity) ,@method-arguments)
-                            (,(ensure-non-keyword-symbol keyword-or-symbol)
-                             (entity-find-behavior entity ',name)
-                             ,@(lambda-list-bindings method-arguments)))
-                          (:method :around ((*behavior* ,name) ,@method-arguments)
-                            (declare (special *behavior*)
-                                     (ignore ,@(remove-if-not (alexandria:compose #'not #'keywordp)
-                                                              (lambda-list-bindings method-arguments))))
-                            (let ((*entity* (behavior-entity *behavior*)))
-                              (call-next-method)))
-                          (:method ((*behavior* ,name) ,@method-arguments)
-                            ,@body))))))))
-
 (defbehavior transform
-  ((position
-    :initform (vec2 0.0)
-    :accessor transform-position
-    :initarg :position)
-   (size
-    :initform (vec2 1.0 1.0)
-    :accessor transform-size
-    :initarg :size)
-   (rotation
-    :initform 0
-    :reader transform-rotation
-    :initarg :rotation)))
-
-(defmethod (setf transform-rotation) (new-value (entity entity))
-  (setf (transform-rotation (entity-find-behavior entity 'transform))
-        new-value))
-
-(defmethod (setf transform-rotation) (new-value (transform transform))
-  (setf (slot-value transform 'rotation)
-        (- new-value (* 360 (floor (/ new-value 360))))))
+  ((position :init (vec2 0.0))
+   (size :init (vec2 1.0 1.0))
+   (rotation :init 0
+             :writer (lambda (new-value)
+                       (- new-value (* 360 (floor (/ new-value 360))))))))
 
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
   (vdistance (transform-position transform1)
@@ -149,14 +49,8 @@
   (incf (transform-rotation *entity*) degrees))
 
 (defbehavior rectangle
-    ((color
-      :accessor rectangle-color
-      :initform (vec4 255 0 0 255)
-      :initarg :color)
-     (depth
-      :accessor rectangle-depth
-      :initform 0
-      :initarg :depth))
+    ((color :init (vec4 255 0 0 255))
+     (depth :init 0))
   (:required-behaviors transform)
   (:tick
    (with-accessors ((position transform-position)
@@ -166,13 +60,8 @@
                      :depth (rectangle-depth *behavior*)))))
 
 (defbehavior sprite
-    ((texture
-      :accessor sprite-texture
-      :initarg :texture)
-     (depth
-      :accessor sprite-depth
-      :initform 0
-      :initarg :depth))
+    (texture
+     (depth :init 0))
   (:required-behaviors transform)
   (:tick
      (draw-texture (transform-position *entity*)
@@ -182,21 +71,9 @@
                    :depth (sprite-depth *behavior*))))
 
 (defbehavior move
-    ((dx
-      :accessor move-dx
-      :initarg :dx
-      :initform 0.0
-      :type single-float)
-     (dy
-      :accessor move-dy
-      :initarg :dy
-      :initform 0.0
-      :type single-float)
-     (speed
-      :accessor move-speed
-      :initarg :speed
-      :initform 1.0
-      :type single-float))
+    ((dx :init 0.0)
+     (dy :init 0.0)
+     (speed :init 1.0))
   (:required-behaviors transform)
   (:tick
    (with-slots (dx dy speed) *behavior*
@@ -219,10 +96,7 @@
        (incf (vy position) (* dy (coerce *dt* 'single-float)))))))
 
 (defbehavior camera
-    ((zoom
-      :initform 1.0
-      :accessor camera-zoom
-      :initarg :zoom))
+    ((zoom :init 1.0))
   (:tick
    (with-accessors ((zoom camera-zoom)) *behavior*
      (when (key-held-p :i)
@@ -237,17 +111,14 @@
                           :rotation (transform-rotation *entity*)))))
 
 (defbehavior follow
-    ((target
-      :initarg :target))
+    (target)
   (:tick
    (with-slots (target) *behavior*
      (with-accessors ((position transform-position)) *entity*
        (setf position (transform-position target))))))
 
 (defbehavior speaker
-    ((sound
-      :initarg :sound
-      :accessor speaker-sound))
+    (sound)
   (:speaker-play ()
    (sound-play (speaker-sound *behavior*)
                :position (transform-position *entity*)))

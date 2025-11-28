@@ -46,15 +46,16 @@
         (harmony:create (slither/assets:asset-data new-asset))))
 
 (defun audio-init ()
-  (mixed:init)
-  (harmony:maybe-start-simple-server
-   :mixers (list
-            :music
-            (list :effect 'mixed:plane-mixer)))
-  (loop for function in *run-on-init*
-        do (funcall function))
-  (setf *initialized* t)
-  (setf *run-on-init* nil))
+  (unless *initialized*
+    (mixed:init)
+    (harmony:maybe-start-simple-server
+     :mixers (list
+              :music
+              (list :effect 'mixed:plane-mixer)))
+    (loop for function in *run-on-init*
+          do (funcall function))
+    (setf *initialized* t)
+    (setf *run-on-init* nil)))
 
 (defvar *listener-position* (vec2 0))
 
