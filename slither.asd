@@ -41,6 +41,15 @@
                  (:file "render")))
                (:file "behaviors")
                (:file "scenes")
-               (:file "networking")
+               (:module "networking"
+                :serial t
+                :components
+                ((:file "socket")
+                 (:file "protocol")
+                 (:file "connection")
+                 (:file "networked")
+                 (:file "server")
+                 (:file "client")
+                 (:file "networking")))
                (:file "physics")
                (:file "slither")))

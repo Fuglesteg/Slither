@@ -6,9 +6,14 @@
   (:export
    :encode-argument
    :decode-arguments
-   :decode-argument))
+   :decode-argument
+   :encode-arguments))
 
 (in-package :slither/serialization)
+
+(defun encode-arguments (arguments)
+  (apply #'concatenate '(vector (unsigned-byte 8))
+         (mapcar #'encode-argument arguments)))
 
 (declaim (ftype (function ((or integer single-float vec2 vec3 vec4)) (vector (unsigned-byte 8)))
                 encode-argument))

@@ -19,7 +19,7 @@
   (declare (special *behavior*))
   (call-next-method))
 
-(defmacro define-behavior-accessor (behavior slot-name &key reader writer)
+(defmacro define-behavior-accessor (behavior slot-name &key reader writer networked)
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name)))))
     `(progn
        (defun ,accessor-symbol (&optional (behavior (or *behavior*
@@ -44,13 +44,22 @@
         (*entity* (behavior-entity behavior)))
     (apply method arguments)))
 
+(defgeneric behavior-networked-p (behavior-symbol)
+  (:method ((behavior-symbol t))
+    nil))
+
+(defgeneric behavior-networked-slots (behavior-symbol))
+
 (defgeneric behavior-encode (behavior))
+(defgeneric behavior-encode-full (behavior))
 (defgeneric behavior-decode (behavior-symbol behavior-vector entity))
+(defgeneric behavior-decode-full (behavior-symbol behavior-vector entity))
 
 (defmacro defbehavior (name slots &body sections)
   (let (methods
         clos-slots
         slot-symbols
+        networked-slots
         (slot-readers (make-hash-table))
         (slot-writers (make-hash-table)))
     (loop for slot in slots
@@ -59,9 +68,11 @@
                         (push (list slot
                                     :initarg (intern (symbol-name slot) :keyword))
                               clos-slots))
-                 (destructuring-bind (symbol &key init writer reader) slot
+                 (destructuring-bind (symbol &key init writer reader networked) slot
                    (push symbol
                          slot-symbols)
+                   (when networked
+                     (push symbol networked-slots))
                    (let ((clos-slot (list symbol :initarg (intern (symbol-name symbol) :keyword))))
                      (when writer
                        (setf (gethash symbol slot-writers) writer))
@@ -92,6 +103,12 @@
                  `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
                     (quote ,arguments))
                  methods))
+               ((string= keyword-or-symbol :networked)
+                (when (first arguments)
+                  (push
+                   `(defmethod behavior-networked-p ((behavior (eql ',name)))
+                      t)
+                   methods)))
                (t (destructuring-bind (method-arguments . body) arguments
                     (push
                      `(define-behavior-method ,name ,(ensure-non-keyword-symbol keyword-or-symbol) ,method-arguments
@@ -105,29 +122,36 @@
                collect `(define-behavior-accessor ,name ,slot-symbol
                           :reader ,slot-reader
                           :writer ,slot-writer))
-       (defmethod behavior-encode ((behavior ,name))
-         (let ((behavior-data (apply #'concatenate
-                                     '(vector (unsigned-byte 8))
-                                     (mapcar
-                                      #'slither/serialization:encode-argument
-                                      (list ,@(loop for slot in slot-symbols
-                                                    collect `(slot-value behavior ',slot)))))))
-           (concatenate
-            '(vector (unsigned-byte 8))
-            (let ((data-length (length behavior-data)))
-              (vector (ldb (byte 8 8) data-length)
-                      (ldb (byte 8 0) data-length)))
-            behavior-data)))
-       (defmethod behavior-decode ((behavior-symbol (eql ',name)) behavior-vector entity)
-         (let* ((behavior-size (vector-read-integer behavior-vector :bytes 2))
-                (arguments (slither/serialization:decode-arguments (subseq behavior-vector 2 (+ 2 behavior-size)))))
-           (declare (ignorable arguments))
-           (values
-            (make-instance ',name
-                           :entity entity
-                           ,@(loop for slot-symbol in slot-symbols
-                                   for i from 0
-                                   append (list (intern (symbol-name slot-symbol) :keyword)
-                                                `(elt arguments ,i))))
-            (+ 2 behavior-size))))
+       ,@(flet ((behavior-encoder (slots)
+                  `(let ((behavior-data (apply #'concatenate
+                                               '(vector (unsigned-byte 8))
+                                               (mapcar
+                                                #'slither/serialization:encode-argument
+                                                (list ,@(loop for slot in slots
+                                                              collect `(slot-value behavior ',slot)))))))
+                     (with-vector-writer (make-array (+ 2 (length behavior-data))
+                                                     :element-type '(unsigned-byte 8))
+                         (:write-integer behavior-write-integer
+                          :write-sequence behavior-write-sequence)
+                      (behavior-write-integer (length behavior-data) :bytes 2)
+                      (behavior-write-sequence behavior-data))))
+                (behavior-decoder (slots)
+                  `(let ((arguments (slither/serialization:decode-arguments behavior-vector)))
+                     (declare (ignorable arguments))
+                     (make-instance ',name
+                                    :entity entity
+                                    ,@(loop for slot-symbol in slots
+                                            for i from 0
+                                            append (list (intern (symbol-name slot-symbol) :keyword)
+                                                         `(elt arguments ,i)))))))
+           `((defmethod behavior-encode-full ((behavior ,name))
+               ,(behavior-encoder slot-symbols))
+             (defmethod behavior-encode ((behavior ,name))
+               ,(behavior-encoder networked-slots))
+             (defmethod behavior-decode-full ((behavior-symbol (eql ',name)) behavior-vector entity)
+               ,(behavior-decoder slot-symbols))
+             (defmethod behavior-decode ((behavior-symbol (eql ',name)) behavior-vector entity)
+               ,(behavior-decoder networked-slots))))
+       (defmethod behavior-networked-slots ((behavior-symbol (eql ',name)))
+         ',networked-slots)
        ,@methods)))

@@ -32,11 +32,13 @@
 (in-package #:slither/behaviors)
 
 (defbehavior transform
-  ((position :init (vec2 0.0))
+  ((position :init (vec2 0.0)
+             :networked t)
    (size :init (vec2 1.0 1.0))
    (rotation :init 0
              :writer (lambda (new-value)
-                       (- new-value (* 360 (floor (/ new-value 360))))))))
+                       (- new-value (* 360 (floor (/ new-value 360)))))))
+  (:networked t))
 
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
   (vdistance (transform-position transform1)
@@ -53,8 +55,9 @@
      (depth :init 0))
   (:required-behaviors transform)
   (:tick
-   (with-accessors ((position transform-position)
-                    (size transform-size))
+   (let* ((transform (entity-find-behavior *entity* 'transform))
+          (position (transform-position transform))
+          (size (transform-size transform)))
        *entity*
      (draw-rectangle position size (rectangle-color *behavior*)
                      :depth (rectangle-depth *behavior*)))))
@@ -91,9 +94,9 @@
                  (if (key-held-p :s)
                      (* speed -1)
                      0)))
-     (with-accessors ((position transform-position)) *entity*
-       (incf (vx position) (* dx (coerce *dt* 'single-float)))
-       (incf (vy position) (* dy (coerce *dt* 'single-float)))))))
+     (let ((transform-position (transform-position (entity-find-behavior *entity* 'transform))))
+       (nv+ transform-position
+            (v* (vec2 dx dy) *dt*))))))
 
 (defbehavior camera
     ((zoom :init 1.0))

@@ -9,8 +9,14 @@
            #:entity
            #:entity-invoke
            #:defentity
+           #:entity-encode
+           #:entity-decode
            #:entity-find-behavior
            #:entity-behaviors
+           #:entity-type-id
+           #:entity-find-networked-slot-id
+           #:entity-networked-slots-with-behaviors
+           #:entity-networked-slots
            #:*behavior*
            #:behavior
            #:behavior-invoke

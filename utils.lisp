@@ -22,7 +22,9 @@
            :lerp
            :rotation-lerp
            :vector-read-integer
-           :integer->byte-array))
+           :integer->byte-array
+           :with-vector-reader
+           :with-vector-writer))
 
 (in-package #:slither/utils)
 
@@ -142,16 +144,45 @@
                 vector-read-integer))
 (defun vector-read-integer (vector &key (bytes 1))
   "Read the amount of bytes from vector as one integer"
-  (apply #'logior (loop for byte below bytes
-                        collect (ash (aref vector byte) (- (* (1- bytes) 8)
-                                                           (* byte 8))))))
+  (apply #'logior (loop for byte from 0 below bytes
+                        collect (ash (aref vector byte) (* byte 8)))))
 
-(declaim (ftype (function (integer) (vector (unsigned-byte 8) 4))
+(declaim (ftype (function (integer &key (:bytes integer)) (vector (unsigned-byte 8)))
                 integer->byte-array))
-(defun integer->byte-array (integer)
-  (make-array 4
+(defun integer->byte-array (integer &key (bytes 4))
+  (make-array bytes
               :element-type '(unsigned-byte 8)
-              :initial-contents (list (ldb (byte 8 24) integer)
-                                      (ldb (byte 8 16) integer)
-                                      (ldb (byte 8 8) integer)
-                                      (ldb (byte 8 0) integer))))
+              :initial-contents (loop for byte from 0 below bytes
+                                      collect (ldb (byte 8 (* byte 8)) integer))))
+
+(defmacro with-vector-reader (vector reader-form &body body)
+  (let ((index-symbol (gensym "INDEX")))
+    (destructuring-bind (&key read-integer read-sequence) reader-form
+      `(let ((,index-symbol 0))
+         (flet (,@(when read-integer
+                    `((,read-integer (bytes)
+                                     (prog1 (vector-read-integer (subseq ,vector ,index-symbol) :bytes bytes)
+                                       (incf ,index-symbol bytes)))))
+                ,@(when read-sequence
+                    `((,read-sequence (bytes)
+                                      (prog1 (subseq ,vector ,index-symbol (+ ,index-symbol bytes))
+                                        (incf ,index-symbol bytes))))))
+           ,@body)))))
+
+(defmacro with-vector-writer (vector writer-form &body body)
+  (let ((index-symbol (gensym "INDEX"))
+        (vector-symbol (gensym "VECTOR")))
+    (destructuring-bind (&key write-integer write-sequence) writer-form
+      `(let ((,index-symbol 0)
+             (,vector-symbol ,vector))
+         (flet (,@(when write-integer
+                    `((,write-integer (integer &key bytes)
+                               (loop for byte across (integer->byte-array integer :bytes bytes)
+                                     do (setf (aref ,vector-symbol ,index-symbol) byte)
+                                        (incf ,index-symbol)))))
+                ,@(when write-sequence
+                    `((,write-sequence (bytes)
+                                       (replace ,vector-symbol bytes :start1 ,index-symbol)
+                                       (incf ,index-symbol (length bytes))))))
+           ,@body
+           ,vector-symbol)))))

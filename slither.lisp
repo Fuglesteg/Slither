@@ -10,7 +10,8 @@
                  #:slither/input
                  #:slither/behaviors
                  #:slither/scenes
-                 #:slither/physics)
+                 #:slither/physics
+                 #:slither/networking)
   (:import-from #:slither/render/uniform
                 #:uniform-value
                 #:uniform-location)
@@ -30,22 +31,4 @@
       (with-event-loop
         (input-poll)
         (update-scene)
-        (if (uiop:featurep :slither-server)
-            (slither/networking::flush-server-networking)
-            (slither/networking::flush-client-networking))
         (renderer-flush))))
-
-#+nil(defun start-game (&key window)
-  (with-window window
-    (renderer-init)
-    #+nil(audio-init)
-    (let ((i 0))
-      (sb-profile:reset)
-      (with-event-loop
-        (when (> i 1000)
-          (sb-profile:report)
-          (return))
-        (input-poll)
-        (update-entities)
-        (renderer-flush)
-        (incf i)))))
