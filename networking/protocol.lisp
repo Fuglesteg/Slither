@@ -63,6 +63,7 @@
   (:use :cl
         :ieee-floats
         :slither/utils
+        :slither/input
         :slither/core
         :slither/serialization)
   (:import-from :serapeum
@@ -92,18 +93,7 @@
                 tick
                 packet-id
                 acknowledging-packet-id
-                last-acknowledged-packets))
-      #+nil(case protocol
-        (:rudp (let ((acknowledging-packet-id (read-packet-bytes 4))
-                     (last-acknowledged-packets (read-packet-bytes 4)))
-                 (values protocol
-                         tick
-                         packet-id
-                         acknowledging-packet-id
-                         last-acknowledged-packets)))
-        (:udp (values protocol
-                      tick
-                      packet-id))))))
+                last-acknowledged-packets)))))
 
 (defun make-packet-header (&key (protocol :udp)
                                 tick
@@ -167,7 +157,12 @@
            (packet-write-byte networked-object-id :bytes 2)
            (packet-write-byte entity-id :bytes 2)
            (packet-write-sequence encoded-entity)))))
-    (:input)))
+    (:input
+     (destructuring-bind (inputs) arguments
+       (let ((encoded-inputs (encode-inputs inputs)))
+         (with-vector-writer (make-octet-vector 3) (:write-integer packet-write-byte)
+           (packet-write-byte 5 :bytes 1)
+           (packet-write-byte encoded-inputs :bytes 2)))))))
 
 (defun parse-subpacket (subpacket)
   (with-vector-reader subpacket (:read-integer packet-read-bytes
@@ -217,7 +212,13 @@
            entity-type-id
            entity)
           (+ packet-length 3))))
-      (5))))
+      (5
+       (let* ((input-integer (packet-read-bytes 2))
+              (inputs (decode-inputs input-integer)))
+         (values (list
+                  :input
+                  inputs)
+                 3))))))
 
 (defconstant +packet-max-size+ 1200)
 

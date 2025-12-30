@@ -13,7 +13,13 @@
            :networked
            :networked-id
            :networked-apply-update
-           :networked-apply-action))
+           :networked-apply-action
+           :networked-apply-input
+           :networked-simulate-p
+           :networked-static-p
+           :networked-client-predicted-p
+           :networked-owned-p
+           :networked-mode))
 
 (in-package :slither/networking/networked)
 
@@ -37,10 +43,14 @@
 
 (defvar *networked-object-id-count* 0)
 
+(deftype networked-mode ()
+  '(member :owned :client-predicted :static))
+
 (defbehavior networked
     ((id :init (prog1 *networked-object-id-count*
                  (incf *networked-object-id-count*))
          :networked t)
+     (mode :init :static)
      (actions :init (make-hash-table :test 'eq))
      (update-places :init (make-array 100
                                       :fill-pointer 0)))
@@ -62,12 +72,6 @@
                                             slot-behavior)
                              (networked-update-places))))))
 
-  (:networked-find-action (networked action-id)
-   (gethash action-id (networked-actions networked)))
-
-  (:networked-apply-action (networked action-id action-arguments)
-   (apply (networked-find-action networked action-id) action-arguments))
-
   #+nil(:networked-find-update-place (networked place-id)
    (aref (networked-update-places networked) place-id))
 
@@ -77,8 +81,31 @@
   #+nil(:networked-send-update (networked place-id new-value)
         (send-subpacket :update (networked-id networked) place-id new-value)))
 
+(defun networked-apply-input (networked inputs)
+  (let ((slither/input::*keys* inputs))
+    (tick (behavior-entity networked))))
+
 (defun networked-apply-update (networked place-id new-value)
   (funcall (networked-find-update-place networked place-id) new-value))
 
 (defun networked-find-update-place (networked place-id)
  (aref (networked-update-places networked) place-id))
+
+(defun networked-owned-p (networked)
+  (eq (networked-mode networked)
+      :owned))
+
+(defun networked-client-predicted-p (networked)
+  (eq (networked-mode networked)
+      :client-predicted))
+
+(defun networked-static-p (networked)
+  (eq (networked-mode networked)
+      :static))
+
+(defun networked-simulate-p ()
+  (let ((networked (entity-find-behavior *entity* 'networked)))
+    (unless networked
+      (return-from networked-simulate-p t))
+    (member (networked-mode networked)
+            (list :owned :client-predicted))))

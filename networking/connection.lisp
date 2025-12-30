@@ -1,6 +1,7 @@
 (uiop:define-package :slither/networking/connection
   (:use :cl
         :slither/utils
+        :slither/core
         :slither/networking/socket
         :slither/networking/protocol)
   (:export
@@ -45,29 +46,42 @@
 (defmethod connection-new-packet-id ((connection connection))
   (incf (slot-value connection 'outbound-packet-id-counter)))
 
-(defmethod connection-acknowledge-received ((connection connection) packet-id)
+(defmethod connection-acknowledge-received ((connection connection)
+                                            packet-id)
   (with-accessors ((rudp-context connection-rudp-context)) connection
-    (let ((packet-id-offset (- packet-id (connection-last-received-packet-id connection))))
+    (let ((packet-id-offset
+            (- packet-id (connection-last-received-packet-id connection))))
       (unless (= packet-id-offset 0)
         (if (< packet-id-offset 0)
             ;; Packet is in the past, update bitfield
             (let ((packet-position (coerce (abs packet-id-offset)
                                            '(unsigned-byte 32))))
               (setf (rudp-context-acknowledged-packets rudp-context)
-                    (dpb 1 (byte 1 packet-position) (rudp-context-acknowledged-packets rudp-context))))
+                    (dpb 1
+                         (byte 1 packet-position)
+                         (rudp-context-acknowledged-packets rudp-context))))
             ;; Packet is in the future, shift bitfield
-            (let ((acknowledged-packets-bitfield (rudp-context-acknowledged-packets rudp-context)))
-              (setf acknowledged-packets-bitfield (ash acknowledged-packets-bitfield packet-id-offset))
-              (setf acknowledged-packets-bitfield (dpb 1 (byte 1 0) acknowledged-packets-bitfield))
-              (setf (rudp-context-acknowledged-packets rudp-context) acknowledged-packets-bitfield)
-              (setf (connection-last-received-packet-id connection) packet-id)))))))
+            (let ((acknowledged-packets-bitfield
+                    (rudp-context-acknowledged-packets rudp-context)))
+              (setf acknowledged-packets-bitfield
+                    (ash acknowledged-packets-bitfield packet-id-offset))
+              (setf acknowledged-packets-bitfield
+                    (dpb 1 (byte 1 0) acknowledged-packets-bitfield))
+              (setf (rudp-context-acknowledged-packets rudp-context)
+                    acknowledged-packets-bitfield)
+              (setf (connection-last-received-packet-id connection)
+                    packet-id)))))))
 
-(defmethod connection-acknowledge-sent ((connection connection) packet-id packets-bitfield)
+(defmethod connection-acknowledge-sent ((connection connection)
+                                        packet-id
+                                        packets-bitfield)
   (rudp-context-acknowledge-sent (connection-rudp-context connection)
                                  packet-id
                                  packets-bitfield))
 
-(defmethod rudp-context-acknowledge-sent ((rudp-context rudp-context) packet-id packets-bitfield)
+(defmethod rudp-context-acknowledge-sent ((rudp-context rudp-context)
+                                          packet-id
+                                          packets-bitfield)
   (let ((acknowledged-packet-ids (list packet-id)))
     (loop for i from 1 to 32
           when (= 1 (ldb (byte 1 i) packets-bitfield))
@@ -96,7 +110,7 @@
 (defmethod connection-make-packet-header ((connection connection))
   (with-slots (rudp-context) connection
     (make-packet-header :protocol :udp
-                        :tick 0 ;(current-tick)
+                        :tick (current-tick)
                         :packet-id (connection-new-packet-id connection)
                         :acknowledging-packet-id (connection-last-received-packet-id connection)
                         :last-acknowledged-packets (rudp-context-acknowledged-packets rudp-context))))

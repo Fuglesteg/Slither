@@ -24,7 +24,8 @@
                 :components
                 ((:file "package")
                  (:file "entities")
-                 (:file "behaviors")))
+                 (:file "behaviors")
+                 (:file "game-loop")))
                (:file "assets")
                (:file "audio")
                (:file "window")
@@ -39,7 +40,6 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
-               (:file "behaviors")
                (:file "scenes")
                (:module "networking"
                 :serial t
@@ -51,5 +51,6 @@
                  (:file "server")
                  (:file "client")
                  (:file "networking")))
+               (:file "behaviors")
                (:file "physics")
                (:file "slither")))

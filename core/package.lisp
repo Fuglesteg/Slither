@@ -23,4 +23,5 @@
            #:defbehavior
            #:behavior-required-behaviors
            #:behavior-entity
-           #:with-behaviors))
+           #:with-behaviors
+           #:current-tick))

@@ -233,35 +233,38 @@
                                                 (vao quad-vertex-array)
                                                 (layer 0)
                                                 (depth 0))
-  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                 :vao vao
-                                                 :depth depth
-                                                 :layer layer)
-                :model-matrix (nm* (mtranslation position)
-                                   (mscaling size))
-                :color color))
+  (when *initialized*
+    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                   :vao vao
+                                                   :depth depth
+                                                   :layer layer)
+                  :model-matrix (nm* (mtranslation position)
+                                     (mscaling size))
+                  :color color)))
 
 (defun draw-circle (position size color &key (shader-program circle-shader-program)
                                              (vao texture-vertex-array)
                                              (layer 0)
                                              (depth 0))
-  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                 :vao vao
-                                                 :depth depth
-                                                 :layer layer)
-                :model-matrix (nm* (mtranslation position)
-                                   (mscaling size))
-                :color color))
+  (when *initialized*
+    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                   :vao vao
+                                                   :depth depth
+                                                   :layer layer)
+                  :model-matrix (nm* (mtranslation position)
+                                     (mscaling size))
+                  :color color)))
 
 
 (defun draw-static (&key (shader-program static-shader-program)
                          (vao quad-vertex-array)
                          (depth 0)
                          (layer 0))
-  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                 :vao vao
-                                                 :layer layer
-                                                 :depth depth)))
+  (when *initialized*
+    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                   :vao vao
+                                                   :layer layer
+                                                   :depth depth))))
 
 (defun draw-texture (position size texture &key (rotation 0)
                                                 (shader-program texture-shader-program)
@@ -269,28 +272,30 @@
                                                 (texture-scale (vec2 1.0 1.0))
                                                 (layer 0)
                                                 (depth 0))
-  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                 :vao vao
-                                                 :texture-id (texture-id texture)
-                                                 :layer layer
-                                                 :depth depth)
-                :model-matrix (nm* (mtranslation position)
-                                   (mscaling size)
-                                   (m3rotate rotation))
-                :texture-scale texture-scale))
+  (when *initialized*
+    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                   :vao vao
+                                                   :texture-id (texture-id texture)
+                                                   :layer layer
+                                                   :depth depth)
+                  :model-matrix (nm* (mtranslation position)
+                                     (mscaling size)
+                                     (m3rotate rotation))
+                  :texture-scale texture-scale)))
 
 (defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
                                                                   (vao texture-vertex-array)
                                                                   (layer 0)
                                                                   (depth 0))
-  (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                 :vao vao
-                                                 :texture-id (texture-id array-texture)
-                                                 :layer layer
-                                                 :depth depth)
-                :model-matrix (nm* (mtranslation position)
-                                   (mscaling size))
-                :texture-index index))
+  (when *initialized*
+    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                   :vao vao
+                                                   :texture-id (texture-id array-texture)
+                                                   :layer layer
+                                                   :depth depth)
+                  :model-matrix (nm* (mtranslation position)
+                                     (mscaling size))
+                  :texture-index index)))
 
 (defconstant +unset-uniform-id+ 1024)
 

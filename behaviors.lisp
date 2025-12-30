@@ -4,7 +4,8 @@
         #:org.shirakumo.fraf.math.matrices
         #:slither/utils
         #:slither/core
-        #:slither/render)
+        #:slither/render
+        #:slither/networking/networked)
   (:import-from #:slither/input
                 #:key-held-p)
   (:import-from #:slither/window
@@ -74,44 +75,46 @@
                    :depth (sprite-depth *behavior*))))
 
 (defbehavior move
-    ((dx :init 0.0)
-     (dy :init 0.0)
-     (speed :init 1.0))
+  ((dx :init 0.0)
+   (dy :init 0.0)
+   (speed :init 1.0))
   (:required-behaviors transform)
   (:tick
-   (with-slots (dx dy speed) *behavior*
-     (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
-     (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
-     (incf dx (+ (if (key-held-p :d)
-                     speed
-                     0)
-                 (if (key-held-p :a)
-                     (* speed -1)
-                     0)))
-     (incf dy (+ (if (key-held-p :w)
-                     speed
-                     0)
-                 (if (key-held-p :s)
-                     (* speed -1)
-                     0)))
-     (let ((transform-position (transform-position (entity-find-behavior *entity* 'transform))))
-       (nv+ transform-position
-            (v* (vec2 dx dy) *dt*))))))
+   (when (networked-simulate-p)
+     (with-slots (dx dy speed) *behavior*
+       (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
+       (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
+       (incf dx (+ (if (key-held-p :d)
+                       speed
+                       0)
+                   (if (key-held-p :a)
+                       (* speed -1)
+                       0)))
+       (incf dy (+ (if (key-held-p :w)
+                       speed
+                       0)
+                   (if (key-held-p :s)
+                       (* speed -1)
+                       0)))
+       (let ((transform-position (transform-position (entity-find-behavior *entity* 'transform))))
+         (nv+ transform-position
+              (v* (vec2 dx dy) *dt*)))))))
 
 (defbehavior camera
-    ((zoom :init 1.0))
+  ((zoom :init 1.0))
   (:tick
-   (with-accessors ((zoom camera-zoom)) *behavior*
-     (when (key-held-p :i)
-       (incf zoom
-             *dt*))
-     (when (and (key-held-p :o)
-                (> zoom 0.01))
-       (decf zoom
-             *dt*))
-     (set-camera-position (transform-position *entity*)
-                          :zoom zoom
-                          :rotation (transform-rotation *entity*)))))
+   (when (networked-simulate-p)
+     (with-accessors ((zoom camera-zoom)) *behavior*
+       (when (key-held-p :i)
+         (incf zoom
+               *dt*))
+       (when (and (key-held-p :o)
+                  (> zoom 0.01))
+         (decf zoom
+               *dt*))
+       (set-camera-position (transform-position *entity*)
+                            :zoom zoom
+                            :rotation (transform-rotation *entity*))))))
 
 (defbehavior follow
     (target)

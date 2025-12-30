@@ -11,7 +11,8 @@
                 :octet-vector)
   (:export
    :flush-server-connection
-   :init-server-connection))
+   :init-server-connection
+   :send-inputs))
 
 (in-package :slither/networking/client)
 
@@ -46,7 +47,13 @@
      (run-server-connection address))
    :name "server-connection"))
 
+(defun send-inputs (inputs)
+  (connection-add-subpacket *server-connection*
+                            (make-subpacket :input
+                                            inputs)))
+
 (defun flush-server-connection ()
+  (send-inputs slither/input::*inputs*)
   (connection-flush *server-connection*)
   (loop for packet across *inbound-packet-buffer*
         do (multiple-value-bind (protocol
@@ -55,12 +62,13 @@
                                  acknowledging-packet-id
                                  last-acknowledged-packets
                                  subpackets) (parse-packet packet)
-             (declare (ignore tick protocol))
+             (declare (ignore protocol))
              (connection-acknowledge-received *server-connection*
                                               packet-id)
              (connection-acknowledge-sent *server-connection*
                                           acknowledging-packet-id
                                           last-acknowledged-packets)
+             (setf (current-tick) tick)
              (loop for (subpacket-type . subpacket) in subpackets
                    do (ecase subpacket-type
                         (:update (destructuring-bind (networked-object-id place-id new-value) subpacket
@@ -68,7 +76,7 @@
                                    (networked-apply-update networked-object
                                                            place-id
                                                            new-value))))
-                        (:action (destructuring-bind (networked-object-id action-id arguments) subpacket
+                        (:action #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
                                    (apply #'networked-apply-action
                                           (find-networked networked-object-id)
                                           action-id

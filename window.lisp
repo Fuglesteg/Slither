@@ -1,5 +1,5 @@
 (defpackage #:slither/window
-  (:use #:cl 
+  (:use #:cl
         #:slither/utils)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export #:frame
@@ -21,7 +21,7 @@
 (defvar *window-width* nil)
 
 (defmethod glfw:window-resized ((window game-window) width height)
-  (setf *window-width* width 
+  (setf *window-width* width
         *window-height* height)
   (gl:viewport 0 0 width height))
 
