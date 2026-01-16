@@ -7,11 +7,10 @@
   (:use-reexport :slither/networking/server
                  :slither/networking/client
                  :slither/networking/networked)
-(:export
-   :start-server
-   :serverp
-   :start-network-client
-   :clientp))
+  (:export :start-server
+           :serverp
+           :start-network-client
+           :clientp))
 
 (in-package :slither/networking)
 

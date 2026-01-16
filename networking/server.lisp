@@ -33,6 +33,8 @@
     :accessor user-name
     :type string)))
 
+(defconstant +tick-buffer-size+ 10)
+
 (defclass client-connection (connection)
   ((user
     :initform (error "User is required")
@@ -42,35 +44,66 @@
    (entities
     :initform nil
     :initarg :entities
-    :accessor client-connection-entities)))
+    :reader client-connection-entities)
+   (inputs
+    :initform (make-array +tick-buffer-size+
+                          :fill-pointer 0
+                          :initial-element nil)
+    :accessor client-connection-inputs)))
 
-(defconstant +tick-buffer-size+ 10)
+(defun (setf client-connection-entities) (new-entities client-connection)
+  (setf (slot-value client-connection 'entities)
+        new-entities)
+  (connection-add-subpacket
+   client-connection
+   (make-subpacket :owner
+                   (mapcar
+                    (lambda (entity)
+                      (networked-id (entity-find-behavior entity 'networked)))
+                    new-entities))))
 
+#+nil(defvar *client-inputs*
+  (make-hash-table +tick-buffer-size+
+              :element-type 'hash-table
+              :initial-contents (loop repeat +tick-buffer-size+
+                                      collect (make-array 32
+                                                          :fill-pointer 0))))
+
+(defun client-inputs-add (client inputs)
+  (vector-push inputs (client-connection-inputs client)))
+
+(defun client-inputs-reset ()
+  (serapeum:do-hash-table (remote client *client-connections*)
+    (declare (ignore remote))
+    (setf (fill-pointer (client-connection-inputs client))
+          0)))
+
+#+server-reconciliation
 (defvar *client-inputs*
   (make-array +tick-buffer-size+
               :element-type 'hash-table
               :initial-contents (loop repeat +tick-buffer-size+
                                       collect (make-hash-table :test 'eq))))
 
+#+server-reconciliation
 (defun client-inputs-add (client tick inputs)
   (let ((index (- (current-tick) tick)))
     (when (< index +tick-buffer-size+)
       (setf (gethash client (aref *client-inputs* index))
             inputs))))
 
+#+server-reconciliation
 (defun client-inputs (client tick)
   (let ((index (- (current-tick) tick)))
     (when (< index +tick-buffer-size+)
       (gethash client (aref *client-inputs* index)))))
 
-(defun client-inputs-rotate ()
-  (clrhash (aref *client-inputs* (1- +tick-buffer-size+)))
-  (macrolet ((rotate-vector-range ()
-               `(rotatef
-                 ,@(loop for i from 1 below +tick-buffer-size+
-                       collect `(aref *client-inputs*
-                                      (- +tick-buffer-size+ ,i))))))
-    (rotate-vector-range)))
+#+server-reconciliation
+(defun client-inputs-shift ()
+  (setf (aref *client-inputs* 0)
+        (clrhash (aref *client-inputs* (1- +tick-buffer-size+))))
+  (replace *client-inputs* *client-inputs*
+           :start1 1))
 
 (defclass inbound-packet ()
   ((origin
@@ -125,7 +158,7 @@
     (client-connections-add-subpacket subpacket)))
 
 (defun send-entity (entity)
-  (let ((subpacket (make-subpacket :spawn
+  (let ((subpacket (make-subpacket :entity
                                    (networked-id (entity-find-behavior entity 'networked))
                                    entity)))
     (client-connections-add-subpacket subpacket)))
@@ -142,29 +175,37 @@
                  do (return-from entity-client-connection client-connection))))
 
 (defun run-server ()
+  (glfw:init)
   (init-listener)
-  (let ((tick-delta (/ 1 60))
+  (let ((tick-delta (/ 1.0 60.0))
+        (accumulator 0.0)
         (last-time (glfw:time))
         (tick 0))
-  (loop for time = (glfw:time)
-        when (<= (+ last-time tick-delta)
-                 time)
-        do #+micros (slither/window::read-repl)
-           (incf tick)
-           (setf last-time time)
-           (let ((slither/core::*tick* tick)
-                 (slither/window:*dt* (- time last-time)))
-             (flush-server)
-             (loop for entity in (scene-entities (current-scene))
-                   do (let ((client-connection
-                              (entity-client-connection entity)))
-                        (if client-connection
-                            (let ((slither/input::*inputs*
-                                  (client-inputs client-connection
-                                                (current-tick))))
-                              (tick entity))
-                            (tick entity))))
-             (client-inputs-rotate)))))
+    (loop
+      (let* ((current-time (glfw:time))
+             (frame-time (- current-time last-time)))
+        (setf last-time current-time)
+        (incf accumulator frame-time)
+        ;; Process all accumulated ticks
+        (loop while (>= accumulator tick-delta)
+              do (incf tick)
+                 (decf accumulator tick-delta)
+                 (let ((slither/core::*tick* tick)
+                       (slither/window:*dt* tick-delta))
+                   #+micros (slither/window::read-repl)
+                   (flush-server)
+                   (loop for entity in (scene-entities (current-scene))
+                         do (let ((client-connection
+                                    (entity-client-connection entity)))
+                              (if (and client-connection
+                                       (client-connection-inputs client-connection)
+                                       (< 0 (length (client-connection-inputs client-connection))))
+                                  (loop for input across (client-connection-inputs client-connection)
+                                        do (let ((slither/input::*inputs* input))
+                                             (tick entity)))
+                                  (tick entity))))
+                   #+server-reconciliation (client-inputs-shift)
+                   (client-inputs-reset)))))))
 
 (defun init-server ()
   (sb-thread:make-thread #'run-server
@@ -218,7 +259,7 @@
                                           (setf (connection-outbound-subpackets connection)
                                                 (loop for key being the hash-keys of (networked-objects)
                                                       using (hash-value networked-object)
-                                                      collect (make-subpacket :spawn
+                                                      collect (make-subpacket :entity
                                                                               key
                                                                               (behavior-entity networked-object))))
                                           (when *on-new-connection*
@@ -233,8 +274,14 @@
                                                    (find-networked networked-object-id)
                                                    action-id
                                                    arguments)))
-                            (:spawn nil)
+                            (:entity nil)
                             (:input (when connection
+                                      (destructuring-bind (inputs) subpacket
+                                        (when inputs
+                                          (client-inputs-add connection
+                                                             (loop for input in inputs
+                                                                   collect (cons input :held)))))
+                                      #+server-reconciliation
                                       (client-inputs-add connection
                                                          (current-tick)
                                                          (destructuring-bind (inputs) subpacket

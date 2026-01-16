@@ -75,10 +75,10 @@
            (list collider))))
   (:tick
    ;; Drag
-   (vdecf (rigidbody-velocity *behavior*)
-          (v* (rigidbody-velocity *behavior*)
-              (vabs (rigidbody-velocity *behavior*))
-              (- (rigidbody-drag *behavior*))
+   (vdecf (rigidbody-velocity)
+          (v* (rigidbody-velocity)
+              (vabs (rigidbody-velocity))
+              (- (rigidbody-drag))
               slither/window:*dt*))
 
    ;; Collisions
@@ -91,7 +91,7 @@
                       (behaviors-of-type 'circle-collider))
                   ;; TODO: Add etypecase for other colliders
                   do (let* ((offset (v- (transform-position (behavior-entity foreign-collider))
-                                        (transform-position *entity*)))
+                                        (transform-position)))
                             (distance (vlength offset))
                             (total-size (+ (circle-radius this-collider)
                                            (circle-radius foreign-collider))))

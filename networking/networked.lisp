@@ -66,11 +66,18 @@
                                       slot)
                           new-value))
                   (lambda (new-value)
-                           (setf (slot-value entity slot) new-value)))))
+                    (setf (slot-value entity slot) new-value)))))
        (loop for (networked-slot slot-behavior) in (entity-networked-slots-with-behaviors entity)
              do (vector-push (slot-accessor networked-slot
                                             slot-behavior)
                              (networked-update-places))))))
+  #+nil(:tick
+   (ecase (networked-mode)
+     (:client-predicted
+      (loop for unprocessed-input in (unprocessed-inputs)
+            do (networked-apply-input networked unprocessed-input)))
+     (:owned)
+     (:static nil)))
 
   #+nil(:networked-find-update-place (networked place-id)
    (aref (networked-update-places networked) place-id))

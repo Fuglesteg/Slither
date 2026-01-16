@@ -10,15 +10,20 @@
    :connection-acknowledge-received
    :connection-acknowledge-sent
    :connection-outbound-subpackets
+   :connection-outbound-packet-id
    :connection-flush
-   :connection-send-packet))
+   :connection-send-packet
+   :connection-last-acknowledged-sent-packet-id))
 
 (in-package :slither/networking/connection)
 
 (defclass rudp-context ()
   ((acknowledged-packets
-    :initarg :acnkowledged-packets
+    :initarg :acknowledged-packets
     :accessor rudp-context-acknowledged-packets
+    :initform 0)
+   (last-acknowledged-sent-packet-id
+    :accessor rudp-context-last-acknowledged-sent-packet-id
     :initform 0)
    (sent-packets
     :initform (make-hash-table :test 'eq)
@@ -29,6 +34,7 @@
     :initarg :remote
     :accessor connection-remote)
    (outbound-packet-id-counter
+    :reader connection-outbound-packet-id
     :initform 0)
    (last-received-packet-id
     :accessor connection-last-received-packet-id
@@ -42,6 +48,9 @@
    (outbound-subpackets
     :accessor connection-outbound-subpackets
     :initform nil)))
+
+(defmethod connection-last-acknowledged-sent-packet-id ((connection connection))
+  (rudp-context-last-acknowledged-sent-packet-id (connection-rudp-context connection)))
 
 (defmethod connection-new-packet-id ((connection connection))
   (incf (slot-value connection 'outbound-packet-id-counter)))
@@ -82,6 +91,8 @@
 (defmethod rudp-context-acknowledge-sent ((rudp-context rudp-context)
                                           packet-id
                                           packets-bitfield)
+  (setf (rudp-context-last-acknowledged-sent-packet-id rudp-context)
+        packet-id)
   (let ((acknowledged-packet-ids (list packet-id)))
     (loop for i from 1 to 32
           when (= 1 (ldb (byte 1 i) packets-bitfield))

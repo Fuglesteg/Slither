@@ -29,10 +29,14 @@
 (in-package #:slither/utils)
 
 (defun safe-vscale (a s)
-  (let ((sum (+ (vx a) (vy a))))
-    (if (< -1.0e-24 sum 1.0e-24)
-        a
-        (vscale a s))))
+  (if (or (= 0 s)
+          (= 0 (vx a))
+          (= 0 (vy a)))
+      (vec2)
+      (let ((sum (+ (vx a) (vy a))))
+        (if (< -1.0e-24 sum 1.0e-24)
+            a
+            (vscale a s)))))
 
 (defmacro defmemo (name &body body)
   (let ((memo (gensym "MEMO")))
@@ -117,7 +121,7 @@
   (nth (random (length list)) list))
 
 (defun random-color ()
-  (vec3 (random-float) (random-float) (random-float)))
+  (vec4 (random-float) (random-float) (random-float) (random-float)))
 
 (defun lambda-list-bindings (lambda-list)
   "Gets the binding symbols from a lambda list"

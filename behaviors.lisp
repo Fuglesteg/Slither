@@ -46,33 +46,31 @@
              (transform-position transform2)))
 
 (defun move (offset)
-  (nv+ (transform-position *entity*) offset))
+  (nv+ (transform-position) offset))
 
 (defun rotate (degrees)
-  (incf (transform-rotation *entity*) degrees))
+  (incf (transform-rotation) degrees))
 
 (defbehavior rectangle
     ((color :init (vec4 255 0 0 255))
      (depth :init 0))
   (:required-behaviors transform)
   (:tick
-   (let* ((transform (entity-find-behavior *entity* 'transform))
-          (position (transform-position transform))
-          (size (transform-size transform)))
-       *entity*
-     (draw-rectangle position size (rectangle-color *behavior*)
-                     :depth (rectangle-depth *behavior*)))))
+     (draw-rectangle (transform-position)
+                     (transform-size)
+                     (rectangle-color *behavior*)
+                     :depth (rectangle-depth *behavior*))))
 
 (defbehavior sprite
     (texture
      (depth :init 0))
   (:required-behaviors transform)
   (:tick
-     (draw-texture (transform-position *entity*)
-                   (transform-size *entity*)
-                   (sprite-texture *behavior*)
-                   :rotation (transform-rotation *entity*)
-                   :depth (sprite-depth *behavior*))))
+     (draw-texture (transform-position)
+                   (transform-size)
+                   (sprite-texture)
+                   :rotation (transform-rotation)
+                   :depth (sprite-depth))))
 
 (defbehavior move
   ((dx :init 0.0)
@@ -96,14 +94,13 @@
                    (if (key-held-p :s)
                        (* speed -1)
                        0)))
-       (let ((transform-position (transform-position (entity-find-behavior *entity* 'transform))))
-         (nv+ transform-position
-              (v* (vec2 dx dy) *dt*)))))))
+         (nv+ (transform-position)
+              (v* (vec2 dx dy) *dt*))))))
 
 (defbehavior camera
   ((zoom :init 1.0))
   (:tick
-   (when (networked-simulate-p)
+   (when (and (slither/networking:clientp) (networked-simulate-p))
      (with-accessors ((zoom camera-zoom)) *behavior*
        (when (key-held-p :i)
          (incf zoom
@@ -112,9 +109,9 @@
                   (> zoom 0.01))
          (decf zoom
                *dt*))
-       (set-camera-position (transform-position *entity*)
+       (set-camera-position (transform-position)
                             :zoom zoom
-                            :rotation (transform-rotation *entity*))))))
+                            :rotation (transform-rotation))))))
 
 (defbehavior follow
     (target)
@@ -126,12 +123,12 @@
 (defbehavior speaker
     (sound)
   (:speaker-play ()
-   (sound-play (speaker-sound *behavior*)
-               :position (transform-position *entity*)))
+   (sound-play (speaker-sound)
+               :position (transform-position)))
   (:speaker-stop ()
-   (sound-stop (speaker-sound *behavior*))))
+   (sound-stop (speaker-sound))))
 
 (defbehavior listener
     ()
   (:tick
-   (setf (listener-position) (transform-position *entity*))))
+   (setf (listener-position) (transform-position))))

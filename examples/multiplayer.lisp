@@ -10,23 +10,17 @@
 (defentity player
   ((name :init "Reodor Felgen"))
   (:behaviors
-   transform
+   (transform :size (vec2 0.1 0.1))
    networked
    move
-   rectangle))
+   (rectangle :color (random-color)))
+  (:start
+   (setf (networked-mode)
+         (if (clientp)
+             :static
+             :owned))))
 
 (defscene multiplayer-server ()
-  (:entities player)
-  (:start
-   (start-server)
-   (setf (on-new-connection)
-         (lambda (connection)
-           (let ((player (spawn-entity 'player
-                                       :name (user-name
-                                              (slither/networking/server::client-connection-user connection)))))
-             (setf (slither/networking/server::client-connection-entities connection)
-                   (list player))
-             (send-entity player)))))
   (:tick
    (flush-server)))
 

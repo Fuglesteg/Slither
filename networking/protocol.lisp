@@ -23,8 +23,9 @@
 ;;;; 1 = disconnect: Request server to close connection
 ;;;; 2 = update: Request client/server to update a value
 ;;;; 3 = action: Request server to perform an action
-;;;; 4 = spawn: Tell client to spawn an object
+;;;; 4 = entity: Entity data to be spawned or updated
 ;;;; 5 = input: Send inputs
+;;;; 6 = owner: Send ownership to client
 ;;;;
 ;;;; 0: Connect:
 ;;;;   - String - Username
@@ -145,7 +146,7 @@
            (packet-write-byte networked-object-id :bytes 2)
            (packet-write-byte action-id :bytes 2)
            (packet-write-sequence encoded-arguments)))))
-    (:spawn
+    (:entity
      (destructuring-bind (networked-object-id entity) arguments
        (let* ((encoded-entity (entity-encode entity))
               (packet-length (+ (length encoded-entity) 2 2))
@@ -162,7 +163,17 @@
        (let ((encoded-inputs (encode-inputs inputs)))
          (with-vector-writer (make-octet-vector 3) (:write-integer packet-write-byte)
            (packet-write-byte 5 :bytes 1)
-           (packet-write-byte encoded-inputs :bytes 2)))))))
+           (packet-write-byte encoded-inputs :bytes 2)))))
+    (:owner
+     (destructuring-bind (entity-ids) arguments
+       (let ((packet-length (* (length entity-ids) 2)))
+       (with-vector-writer
+           (make-octet-vector (+ 3 packet-length))
+           (:write-integer packet-write-byte)
+         (packet-write-byte 6 :bytes 1)
+         (packet-write-byte packet-length :bytes 2)
+         (dolist (entity-id entity-ids)
+           (packet-write-byte entity-id :bytes 2))))))))
 
 (defun parse-subpacket (subpacket)
   (with-vector-reader subpacket (:read-integer packet-read-bytes
@@ -208,7 +219,7 @@
          (declare (ignore networked-object-id))
          (values
           (list
-           :spawn
+           :entity
            entity-type-id
            entity)
           (+ packet-length 3))))
@@ -218,7 +229,15 @@
          (values (list
                   :input
                   inputs)
-                 3))))))
+                 3)))
+      (6
+       (let* ((packet-length (packet-read-bytes 2))
+              (entity-ids (loop repeat (the integer (/ packet-length 2))
+                                collect (packet-read-bytes 2))))
+         (values (list
+                  :owner
+                  entity-ids)
+                 (+ packet-length 3)))))))
 
 (defconstant +packet-max-size+ 1200)
 
