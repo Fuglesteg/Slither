@@ -50,7 +50,9 @@
     ((id :init (prog1 *networked-object-id-count*
                  (incf *networked-object-id-count*))
          :networked t)
-     (mode :init :static)
+     (mode :init (if (eq (networking-environment) :client)
+                     :static
+                     :owned))
      (actions :init (make-hash-table :test 'eq))
      (update-places :init (make-array 100
                                       :fill-pointer 0)))
