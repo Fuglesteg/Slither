@@ -20,31 +20,23 @@
   (call-next-method))
 
 (defmacro define-behavior-accessor (behavior slot-name &key reader writer networked)
-  (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name)))))
+  (declare (ignore networked))
+  (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name))))
+        (accessor-form `(slot-value
+                         (etypecase behavior
+                           (entity (entity-find-behavior behavior ',behavior))
+                           (,behavior behavior)
+                           (behavior (entity-find-behavior (behavior-entity behavior) ',behavior)))
+                         ',slot-name)))
     `(progn
-       (defun ,accessor-symbol (&optional (behavior (or (when (and *behavior* (typep *behavior* ',behavior))
-                                                          *behavior*)
-                                                     (entity-find-behavior *entity* ',behavior))))
-         ,(let ((accessor-form `(if (typep behavior 'entity)
-                                    (slot-value (entity-find-behavior behavior ',behavior) ',slot-name)
-                                    (if (typep behavior ',behavior)
-                                        (slot-value behavior ',slot-name)
-                                        (slot-value (entity-find-behavior (behavior-entity behavior) ',behavior) ',slot-name)))))
-            (if reader
+       (defun ,accessor-symbol (&optional (behavior (or *behavior* *entity*)))
+            ,(if reader
                 `(funcall reader ,accessor-form)
-                accessor-form)))
-       (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior*
-                                                                      (entity-find-behavior *entity* ',behavior))))
-         ,(let ((accessor-form `(slot-value
-                                 (if (typep behavior 'entity)
-                                     (entity-find-behavior behavior ',behavior)
-                                     (if (typep behavior ',behavior)
-                                         behavior
-                                         (entity-find-behavior (behavior-entity behavior) ',behavior)))
-                                 ',slot-name)))
-           `(setf ,accessor-form ,(if writer
+                accessor-form))
+       (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior* *entity*)))
+           (setf ,accessor-form ,(if writer
                                      `(funcall ,writer new-value)
-                                     'new-value)))))))
+                                     'new-value))))))
 
 (defmacro define-behavior-method (behavior name method-arguments &body body)
   `(defun ,name ,method-arguments
