@@ -3,28 +3,54 @@
         #:org.shirakumo.fraf.math.matrices
         #:org.shirakumo.fraf.math.vectors)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
-  (:export :continuable
-           :symbol->camel-case
-           :function-symbol->global-variable-symbol
-           :defmemo
-           :random-color
-           :degrees->radians
-           :rotation->vec2
-           :random-float
-           :random-element
-           :clamp
-           :smoothstep
-           :ensure-non-keyword-symbol
-           :lambda-list-bindings
-           :vec2->rotation
-           :mat2->mat3
-           :safe-vscale
-           :lerp
-           :rotation-lerp
-           :vector-read-integer
-           :integer->byte-array
-           :with-vector-reader
-           :with-vector-writer))
+  (:import-from :alexandria
+                :when-let
+                :when-let*
+                :if-let)
+  (:import-from :serapeum
+                :octet
+                :octet-vector
+                :make-octet-vector
+                :octet-vector-p
+                :octet-vector=
+                :do-hash-table
+                :do-each)
+  (:export
+   ;; Alexandria
+   :when-let
+   :when-let*
+   :if-let
+   ;; Serapeum
+   :octet
+   :octet-vector
+   :make-octet-vector
+   :octet-vector-p
+   :octet-vector=
+   :do-hash-table
+   :do-each
+   ;; Local
+   :continuable
+   :symbol->camel-case
+   :function-symbol->global-variable-symbol
+   :defmemo
+   :random-color
+   :degrees->radians
+   :rotation->vec2
+   :random-float
+   :random-element
+   :clamp
+   :smoothstep
+   :ensure-non-keyword-symbol
+   :lambda-list-bindings
+   :vec2->rotation
+   :mat2->mat3
+   :safe-vscale
+   :lerp
+   :rotation-lerp
+   :vector-read-integer
+   :integer->byte-array
+   :with-vector-reader
+   :with-vector-writer))
 
 (in-package #:slither/utils)
 
