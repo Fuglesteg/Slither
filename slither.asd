@@ -5,6 +5,7 @@
   :version "0.0.2"
   :depends-on (#:cl-opengl
                #:3d-math
+               #:ieee-floats
                #:glfw
                #:pngload
                #:harmony
@@ -17,6 +18,14 @@
                #:serapeum)
   :serial t
   :components ((:file "utils")
+               (:file "serialization")
+               (:module "core"
+                :serial t
+                :components
+                ((:file "package")
+                 (:file "entities")
+                 (:file "behaviors")
+                 (:file "game-loop")))
                (:file "assets")
                (:file "audio")
                (:file "window")
@@ -31,8 +40,17 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
-               (:file "entities")
-               (:file "behaviors")
                (:file "scenes")
+               (:module "networking"
+                :serial t
+                :components
+                ((:file "socket")
+                 (:file "protocol")
+                 (:file "connection")
+                 (:file "networked")
+                 (:file "server")
+                 (:file "client")
+                 (:file "networking")))
+               (:file "behaviors")
                (:file "physics")
                (:file "slither")))

@@ -1,7 +1,7 @@
 (defpackage #:slither/scenes
   (:use #:cl
         #:slither/utils
-        #:slither/entities)
+        #:slither/core)
   (:export #:defscene
            #:scene
            #:scene-reset
@@ -15,6 +15,7 @@
            #:update-scene
            #:current-scene
            #:scene-values
+           #:scene-entities
            #:scene-value))
 
 (in-package #:slither/scenes)
@@ -53,7 +54,9 @@
     (start entity)))
 
 (defun spawn-entity (name &rest initargs)
-  (add-entity (apply #'make-instance name initargs)))
+  (let ((entity (apply #'make-instance name initargs)))
+    (add-entity entity)
+    entity))
 
 (defun remove-entity (&rest entities)
   (dolist (entity entities)
