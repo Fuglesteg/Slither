@@ -66,7 +66,9 @@
      (mass :init 1.0)
      (bounciness :init 0.0)
      (drag :init 0.0)
-     (velocity :init (vec2)))
+     (velocity :init (vec2)
+               :networked t))
+  (:networked t)
   (:required-behaviors
    transform)
   (:start

@@ -33,7 +33,7 @@
     :accessor user-name
     :type string)))
 
-(defconstant +tick-buffer-size+ 10)
+(defconstant +tick-buffer-size+ 30)
 
 (defclass client-connection (connection)
   ((user
@@ -47,7 +47,6 @@
     :reader client-connection-entities)
    (inputs
     :initform (make-array +tick-buffer-size+
-                          :fill-pointer 0
                           :initial-element nil)
     :accessor client-connection-inputs)))
 
@@ -62,34 +61,18 @@
                       (networked-id (entity-find-behavior entity 'networked)))
                     new-entities))))
 
-#+nil(defvar *client-inputs*
-  (make-hash-table +tick-buffer-size+
-              :element-type 'hash-table
-              :initial-contents (loop repeat +tick-buffer-size+
-                                      collect (make-array 32
-                                                          :fill-pointer 0))))
-
-(defun client-inputs-add (client inputs)
-  (vector-push inputs (client-connection-inputs client)))
-
 (defun client-inputs-reset ()
-  (serapeum:do-hash-table (remote client *client-connections*)
+  (do-hash-table (remote client *client-connections*)
     (declare (ignore remote))
-    (setf (fill-pointer (client-connection-inputs client))
-          0)))
+    (do-each (inputs (client-connection-inputs client))
+      (unless (null inputs)
+        (setf inputs :processed)))))
 
-#+server-reconciliation
-(defvar *client-inputs*
-  (make-array +tick-buffer-size+
-              :element-type 'hash-table
-              :initial-contents (loop repeat +tick-buffer-size+
-                                      collect (make-hash-table :test 'eq))))
-
-#+server-reconciliation
 (defun client-inputs-add (client tick inputs)
   (let ((index (- (current-tick) tick)))
     (when (< index +tick-buffer-size+)
-      (setf (gethash client (aref *client-inputs* index))
+      (setf (aref (client-connection-inputs client)
+                  index)
             inputs))))
 
 #+server-reconciliation
@@ -98,12 +81,13 @@
     (when (< index +tick-buffer-size+)
       (gethash client (aref *client-inputs* index)))))
 
-#+server-reconciliation
 (defun client-inputs-shift ()
-  (setf (aref *client-inputs* 0)
-        (clrhash (aref *client-inputs* (1- +tick-buffer-size+))))
-  (replace *client-inputs* *client-inputs*
-           :start1 1))
+  (do-hash-table (remote client *client-connections*)
+    (declare (ignore remote))
+    (with-accessors ((inputs client-connection-inputs)) client
+      (setf (aref inputs 0) nil)
+      (replace inputs inputs
+               :start1 1))))
 
 (defclass inbound-packet ()
   ((origin
@@ -197,15 +181,17 @@
                    (loop for entity in (scene-entities (current-scene))
                          do (let ((client-connection
                                     (entity-client-connection entity)))
-                              (if (and client-connection
-                                       (client-connection-inputs client-connection)
-                                       (< 0 (length (client-connection-inputs client-connection))))
+                              (if client-connection
                                   (loop for input across (client-connection-inputs client-connection)
-                                        do (let ((slither/input::*inputs* input))
-                                             (tick entity)))
+                                        do (unless (or (null input)
+                                                       (eq input :processed))
+                                             (if (eq input :empty)
+                                                 (tick entity)
+                                                 (let ((slither/input::*inputs* input))
+                                                   (tick entity)))))
                                   (tick entity))))
-                   #+server-reconciliation (client-inputs-shift)
-                   (client-inputs-reset)))))))
+                   (client-inputs-reset)
+                   (client-inputs-shift)))))))
 
 (defun init-server ()
   (sb-thread:make-thread #'run-server
@@ -277,10 +263,14 @@
                             (:entity nil)
                             (:input (when connection
                                       (destructuring-bind (inputs) subpacket
-                                        (when inputs
-                                          (client-inputs-add connection
-                                                             (loop for input in inputs
-                                                                   collect (cons input :held)))))
+                                        (if (null inputs)
+                                            (client-inputs-add connection
+                                                               (current-tick)
+                                                               :empty)
+                                            (client-inputs-add connection
+                                                               (current-tick)
+                                                               (loop for input in inputs
+                                                                     collect (cons input :held)))))
                                       #+server-reconciliation
                                       (client-inputs-add connection
                                                          (current-tick)

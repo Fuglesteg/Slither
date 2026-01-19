@@ -12,14 +12,6 @@
                  #:slither/scenes
                  #:slither/physics
                  #:slither/networking)
-  (:import-from #:slither/render/uniform
-                #:uniform-value
-                #:uniform-location)
-  (:import-from #:slither/render/shader-program
-                #:shader-program
-                #:make-shader-program
-                #:set-uniform-value
-                #:get-uniform)
   (:export #:start-game))
 
 (in-package #:slither)

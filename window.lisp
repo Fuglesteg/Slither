@@ -1,5 +1,6 @@
 (defpackage #:slither/window
   (:use #:cl
+        #:slither/core
         #:slither/utils)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export #:frame
@@ -27,11 +28,19 @@
 
 (defvar *dt* 0)
 (defvar *last-frame-time* 0)
+(defvar *current-time* 0)
 
 (defun calculate-dt ()
-  (let ((current-time (glfw:time)))
-    (setf *dt* (- current-time *last-frame-time*)
-          *last-frame-time* current-time)))
+  (setf *current-time* (glfw:time))
+  (setf *dt* (- *current-time* *last-frame-time*)
+        *last-frame-time* *current-time*))
+
+(let ((last-tick-time 0)
+      (tick-delta (/ 1.0 60.0)))
+  (defun calculate-tick ()
+    (when (< (+ last-tick-time tick-delta)
+             *current-time*)
+      (incf (current-tick)))))
 
 #+micros
 (defun read-repl ()
@@ -73,6 +82,7 @@
          do (progn
               #+micros (read-repl)
               (calculate-dt)
+              (calculate-tick)
               (glfw:poll-events)
               (continuable
                 ,@body)
