@@ -5,7 +5,8 @@ in vec2 TexCoord;
 
 uniform sampler2D spriteTexture;
 uniform vec2 textureScale = vec2(1.0, 1.0);
+uniform vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
 
 void main() {
-    FragColor = texture(spriteTexture, TexCoord * textureScale);
+    FragColor = texture(spriteTexture, TexCoord * textureScale) * color;
 }

@@ -177,11 +177,13 @@
   :fragment-shader texture-fragment-shader
   :uniforms '(model-matrix
               view-matrix
-              texture-scale)
+              texture-scale
+              color)
   :on-bind (lambda (program)
              (setf (uniform-value (get-uniform program 'view-matrix)) *view-matrix*))
   :on-render (lambda (program drawcall-data)
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
+                     (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data)
                      (uniform-value (get-uniform program 'texture-scale)) (drawcall-data-texture-scale drawcall-data))))
 
 (define-fragment-shader array-texture-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/array-texture.frag"))
@@ -191,11 +193,13 @@
   :fragment-shader array-texture-fragment-shader
   :uniforms '(model-matrix
               view-matrix
-              texture-index)
+              texture-index
+              color)
   :on-bind (lambda (program)
              (setf (uniform-value (get-uniform program 'view-matrix)) *view-matrix*))
   :on-render (lambda (program drawcall-data)
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
+                     (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data)
                      (uniform-value (get-uniform program 'texture-index)) (drawcall-data-texture-index drawcall-data))))
 
 (define-fragment-shader circle-fragment-shader
@@ -270,6 +274,7 @@
                                                 (shader-program texture-shader-program)
                                                 (vao texture-vertex-array)
                                                 (texture-scale (vec2 1.0 1.0))
+                                                (color (vec4 1.0 1.0 1.0 1.0))
                                                 (layer 0)
                                                 (depth 0))
   (when *initialized*
@@ -281,10 +286,12 @@
                   :model-matrix (nm* (mtranslation position)
                                      (mscaling size)
                                      (m3rotate rotation))
-                  :texture-scale texture-scale)))
+                  :texture-scale texture-scale
+                  :color color)))
 
 (defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
                                                                   (vao texture-vertex-array)
+                                                                  (color (vec4 1.0))
                                                                   (layer 0)
                                                                   (depth 0))
   (when *initialized*
@@ -294,8 +301,10 @@
                                                    :layer layer
                                                    :depth depth)
                   :model-matrix (nm* (mtranslation position)
-                                     (mscaling size))
-                  :texture-index index)))
+                                     (mscaling size)
+                                     (m3rotate rotation))
+                  :texture-index index
+                  :color color)))
 
 (defconstant +unset-uniform-id+ 1024)
 
