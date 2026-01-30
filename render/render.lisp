@@ -14,6 +14,7 @@
                 #:texture-asset)
   (:import-from :slither/render/array-texture
                 #:array-texture
+                #:array-texture-asset
                 #:with-bound-array-texture)
   (:import-from :slither/render/shader-program
                 #:shader-program
@@ -50,7 +51,23 @@
            #:define-shader-program
            #:define-texture
            #:define-array-texture
-           :draw-circle))
+           #:draw-circle
+           #:screen-space-rotate
+           :static-vertex-shader
+           :color-fragment-shader
+           :static-shader-program
+           :world-space-vertex-shader
+           :color-shader-program
+           :texture-vertex-shader
+           :texture-fragment-shader
+           :texture-shader-program
+           :array-texture-fragment-shader
+           :array-texture-shader-program
+           :circle-fragment-shader
+           :circle-shader-program
+           :screen-space-vertex-shader
+           :ui-array-texture-shader-program
+           :shader-program))
 
 (in-package #:slither/render)
 
@@ -116,13 +133,12 @@
 
   (defmacro define-array-texture (name file &key width height)
     `(progn
-       (defvar ,name nil)
+       (defvar ,name (make-instance 'array-texture
+                                    :sprite-width ,width
+                                    :sprite-height ,height))
        (defasset ,name ,file :png)
        (delay-evaluation
-         (setf ,name (make-instance 'array-texture
-                                    :asset ',name
-                                    :width ,width
-                                    :height ,height))))))
+         (setf (array-texture-asset ,name) ',name)))))
 
 (defun m3rotate (degrees)
   (let ((cosine (cos (degrees->radians degrees)))
@@ -132,6 +148,7 @@
           0 0 1)))
 
 (defvar *view-matrix* nil)
+(defvar *camera-zoom* 1.0)
 (defun set-camera-position (position &key
                                      (zoom 1.0)
                                      (aspect-ratio (/ slither/window:*window-width* slither/window:*window-height*))
@@ -139,6 +156,7 @@
   (let ((zoom (if (< zoom 0)
                   0
                   zoom)))
+    (setf *camera-zoom* zoom)
     (setf *view-matrix*
           (nm*
            (mscaling (vec2 (/ zoom aspect-ratio) zoom))
@@ -217,6 +235,20 @@
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
                      (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data))))
 
+(define-vertex-shader screen-space-vertex-shader
+  :path (asdf:system-relative-pathname :slither "./render/shaders/screen-space.vert"))
+
+(define-shader-program ui-array-texture-shader-program
+  :vertex-shader screen-space-vertex-shader
+  :fragment-shader array-texture-fragment-shader
+  :uniforms '(model-matrix
+              texture-index
+              color)
+  :on-render (lambda (program drawcall-data)
+               (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
+                     (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data)
+                     (uniform-value (get-uniform program 'texture-index)) (drawcall-data-texture-index drawcall-data))))
+
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
@@ -227,11 +259,20 @@
   (gl:blend-func :src-alpha :one-minus-src-alpha))
 
 (defun screen-space-position (vector)
-  (m* (minv *view-matrix*) vector))
+  (if (= 0 (mdet *view-matrix*))
+      vector
+      (m* (minv *view-matrix*) vector)))
 
 (defun screen-space-scale (vector)
-  (v/ vector (vec2 (mcref *view-matrix* 0 0)
-                   (mcref *view-matrix* 1 1))))
+    (v/ vector
+        (vec2 *camera-zoom*
+              *camera-zoom*)))
+
+(defun screen-space-rotate (rotation)
+  (rotation-lerp rotation
+                 (radians->degrees (atan (mcref *view-matrix* 0 1)
+                          (mcref *view-matrix* 0 0)))
+                 1.0))
 
 (defun draw-rectangle (position size color &key (shader-program color-shader-program)
                                                 (vao quad-vertex-array)
@@ -289,7 +330,8 @@
                   :texture-scale texture-scale
                   :color color)))
 
-(defun draw-array-texture (position size index array-texture &key (shader-program array-texture-shader-program)
+(defun draw-array-texture (position size index array-texture &key (rotation 0)
+                                                                  (shader-program array-texture-shader-program)
                                                                   (vao texture-vertex-array)
                                                                   (color (vec4 1.0))
                                                                   (layer 0)
@@ -297,7 +339,7 @@
   (when *initialized*
     (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
                                                    :vao vao
-                                                   :texture-id (texture-id array-texture)
+                                                   :array-texture-id (slither/render/array-texture::array-texture-id array-texture)
                                                    :layer layer
                                                    :depth depth)
                   :model-matrix (nm* (mtranslation position)
@@ -333,10 +375,11 @@
 (declaim (ftype (function (&key (shader-program-id (unsigned-byte 8))
                                 (vao (unsigned-byte 8))
                                 (texture-id (unsigned-byte 8))
+                                (array-texture-id (unsigned-byte 8))
                                 (layer (unsigned-byte 8))
                                 (depth (unsigned-byte 8)))
                           drawcall-key)))
-(defun make-drawcall-key (&key shader-program-id vao (texture-id 0) (layer 0) (depth 0))
+(defun make-drawcall-key (&key shader-program-id vao (texture-id 0) (array-texture-id 0) (layer 0) (depth 0))
   (let ((offset 0) (key 0))
     (declare (type drawcall-key key))
     (flet ((key-insert-field (value size)
@@ -345,6 +388,7 @@
       (key-insert-field shader-program-id 8)
       (key-insert-field vao 8)
       (key-insert-field texture-id 8)
+      (key-insert-field array-texture-id 8)
       (key-insert-field depth 8)
       (key-insert-field layer 8)
       key)))
@@ -363,6 +407,7 @@
                  (ldb (byte size offset) key)
                (incf offset size))))
       (values
+       (key-get-field 8)
        (key-get-field 8)
        (key-get-field 8)
        (key-get-field 8)
@@ -393,6 +438,7 @@
 (defvar *current-shader-program* 100000)
 (defvar *current-texture* 100000)
 (defvar *current-vao* 100000)
+(defvar *current-array-texture* 100000)
 
 (defun renderer-flush ()
   (gl:clear :color-buffer)
@@ -401,7 +447,7 @@
     (when (= *current-shader-program* first-shader-program-id)
       (program-bind first-shader-program-id)))
   (loop for drawcall across *drawcall-buffer*
-        do (multiple-value-bind (shader-program-id vao-id texture-id)
+        do (multiple-value-bind (shader-program-id vao-id texture-id array-texture-id)
                (drawcall-key-fields (drawcall-key drawcall))
              (unless (= shader-program-id *current-shader-program*)
                (program-bind shader-program-id)
@@ -413,6 +459,9 @@
                (gl:bind-texture :texture-2d texture-id)
                (gl:active-texture :texture0)
                (setf *current-texture* texture-id))
+             (unless (= array-texture-id *current-array-texture*)
+               (gl:bind-texture :texture-2d-array array-texture-id)
+               (setf *current-array-texture* array-texture-id))
              (program-render shader-program-id (drawcall-data drawcall))))
   (reset-drawcall-buffer)
   (gl:flush))

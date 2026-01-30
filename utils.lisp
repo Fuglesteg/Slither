@@ -1,8 +1,8 @@
 (uiop:define-package #:slither/utils
-  (:use #:cl
-        #:org.shirakumo.fraf.math.matrices
-        #:org.shirakumo.fraf.math.vectors)
+  (:use #:cl)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
+  (:use-reexport #:org.shirakumo.fraf.math.matrices
+                 #:org.shirakumo.fraf.math.vectors)
   (:import-from :alexandria
                 :when-let
                 :when-let*

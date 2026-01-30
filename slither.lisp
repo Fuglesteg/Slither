@@ -5,6 +5,7 @@
                  #:slither/utils
                  #:slither/core
                  #:slither/render
+                 #:slither/ui
                  #:slither/window
                  #:slither/audio
                  #:slither/input
