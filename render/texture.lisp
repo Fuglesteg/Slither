@@ -34,13 +34,13 @@
     (static-vectors:with-static-vector (image-data (length (pngload:data png))
                                                    :initial-contents (pngload:data png))
       (gl:tex-image-2d :texture-2d 0 :rgba
-                       (pngload:width png) 
-                       (pngload:height png) 
+                       (pngload:width png)
+                       (pngload:height png)
                        0 :rgba :unsigned-byte image-data))
     (gl:generate-mipmap :texture-2d)
     (gl:bind-texture :texture-2d 0)
     (setf (texture-id texture) id)))
-  
+
 (defmethod initialize-instance :after ((texture texture) &key)
   (when (texture-asset texture)
     (texture-load-asset texture)))

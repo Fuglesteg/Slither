@@ -40,6 +40,7 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
+               (:file "ui")
                (:file "scenes")
                (:module "networking"
                 :serial t

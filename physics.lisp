@@ -72,7 +72,7 @@
   (:required-behaviors
    transform)
   (:start
-   (alexandria:when-let ((collider (entity-find-behavior *entity* 'circle-collider)))
+   (when-let ((collider (entity-find-behavior *entity* 'circle-collider)))
      (setf (slot-value *behavior* 'colliders)
            (list collider))))
   (:tick
@@ -131,8 +131,8 @@
                                   (foreign-velocity (if foreign-rigidbody
                                                         (rigidbody-velocity foreign-rigidbody)
                                                         (vec2)))
-                                  (static-friction 1.0)
-                                  (dynamic-friction 1.0)
+                                  (static-friction 1.1)
+                                  (dynamic-friction 2.0)
                                   (relative-velocity (v- foreign-velocity
                                                          (rigidbody-velocity *behavior*)))
                                   (velocity-along-normal (v. relative-velocity

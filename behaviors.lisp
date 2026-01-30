@@ -100,7 +100,8 @@
 (defbehavior camera
   ((zoom :init 1.0))
   (:tick
-   (when (and (slither/networking:clientp) (networked-simulate-p))
+   (when (and (not (slither/networking:serverp))
+              (networked-simulate-p))
      (with-accessors ((zoom camera-zoom)) *behavior*
        (when (key-held-p :i)
          (incf zoom
