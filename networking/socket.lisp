@@ -17,7 +17,7 @@
                         :type :datagram
                         :protocol :udp)))
 
-(defun socket-listen (&optional (port 7777))
+(defun socket-listen (&optional (port 7878))
   (sb-bsd-sockets:socket-bind *socket* #(0 0 0 0) port))
 
 (defun socket-close ()

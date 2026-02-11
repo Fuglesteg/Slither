@@ -35,8 +35,8 @@
   (eq (networking-environment)
       :server))
 
-(defun start-network-client (address)
-  (init-server-connection address)
+(defun start-network-client (address &optional username)
+  (init-server-connection address username)
   (setf (networking-environment) :client))
 
 (defun clientp ()

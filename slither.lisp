@@ -5,6 +5,7 @@
                  #:slither/utils
                  #:slither/core
                  #:slither/render
+                 #:slither/ui
                  #:slither/window
                  #:slither/audio
                  #:slither/input
@@ -21,6 +22,6 @@
     (renderer-init)
     (audio-init)
       (with-event-loop
-        (input-poll)
         (update-scene)
+        (input-poll)
         (renderer-flush))))

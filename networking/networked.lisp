@@ -58,21 +58,22 @@
                                       :fill-pointer 0)))
   (:networked t)
   (:start
-   (setf (gethash (networked-id) (networked-objects))
-         *behavior*)
-   (let ((entity *entity*))
-     (flet ((slot-accessor (slot behavior)
-              (if behavior
-                  (lambda (new-value)
-                    (setf (slot-value (entity-find-behavior entity behavior)
-                                      slot)
-                          new-value))
-                  (lambda (new-value)
-                    (setf (slot-value entity slot) new-value)))))
-       (loop for (networked-slot slot-behavior) in (entity-networked-slots-with-behaviors entity)
-             do (vector-push (slot-accessor networked-slot
-                                            slot-behavior)
-                             (networked-update-places))))))
+   (when (networked-objects)
+     (setf (gethash (networked-id) (networked-objects))
+           *behavior*)
+     (let ((entity *entity*))
+       (flet ((slot-accessor (slot behavior)
+                (if behavior
+                    (lambda (new-value)
+                      (setf (slot-value (entity-find-behavior entity behavior)
+                                        slot)
+                            new-value))
+                    (lambda (new-value)
+                      (setf (slot-value entity slot) new-value)))))
+         (loop for (networked-slot slot-behavior) in (entity-networked-slots-with-behaviors entity)
+               do (vector-push (slot-accessor networked-slot
+                                              slot-behavior)
+                               (networked-update-places)))))))
   #+nil(:tick
    (ecase (networked-mode)
      (:client-predicted

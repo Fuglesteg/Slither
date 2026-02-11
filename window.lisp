@@ -9,7 +9,8 @@
            #:*window-height*
            #:fps
            #:with-event-loop
-           #:with-window))
+           #:with-window
+           #:aspect-ratio))
 
 (in-package #:slither/window)
 
@@ -18,8 +19,11 @@
    :width 250 :height 250
    :title "Slither"))
 
-(defvar *window-height* nil)
-(defvar *window-width* nil)
+(defvar *window-height* 1920)
+(defvar *window-width* 1080)
+
+(defun aspect-ratio ()
+  (/ *window-width* *window-height*))
 
 (defmethod glfw:window-resized ((window game-window) width height)
   (setf *window-width* width

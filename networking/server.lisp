@@ -121,7 +121,7 @@
 
 (defun init-listener ()
   (sb-thread:make-thread
-   #'run-server
+   #'run-listener
    :name "packet-listener"))
 
 (defvar *on-new-connection* nil)

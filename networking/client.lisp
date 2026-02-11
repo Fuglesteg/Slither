@@ -33,8 +33,7 @@
                                                   :initial-element (make-array 0 :element-type '(unsigned-byte 8))
                                                   :element-type '(vector (unsigned-byte 8))))
 
-(defun run-server-connection (address)
-  (connect-to-server address)
+(defun run-server-connection (address &optional username)
   (unwind-protect
        (loop
          (vector-push (socket-receive)
@@ -42,10 +41,11 @@
     (socket-close)
     (setf *server-connection* nil)))
 
-(defun init-server-connection (address)
+(defun init-server-connection (address &optional username)
+  (connect-to-server address username)
   (sb-thread:make-thread
    (lambda ()
-     (run-server-connection address))
+     (run-server-connection address username))
    :name "server-connection"))
 
 (defconstant +input-buffer-size+ 10)

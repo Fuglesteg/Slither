@@ -1,13 +1,14 @@
 (uiop:define-package #:slither/utils
-  (:use #:cl
-        #:org.shirakumo.fraf.math.matrices
-        #:org.shirakumo.fraf.math.vectors)
+  (:use #:cl)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
+  (:use-reexport #:org.shirakumo.fraf.math.matrices
+                 #:org.shirakumo.fraf.math.vectors)
   (:import-from :alexandria
                 :when-let
                 :when-let*
                 :if-let)
   (:import-from :serapeum
+                :->
                 :octet
                 :octet-vector
                 :make-octet-vector
@@ -21,6 +22,7 @@
    :when-let*
    :if-let
    ;; Serapeum
+   :->
    :octet
    :octet-vector
    :make-octet-vector
@@ -50,7 +52,9 @@
    :vector-read-integer
    :integer->byte-array
    :with-vector-reader
-   :with-vector-writer))
+   :with-vector-writer
+   :anchor
+   :position-apply-anchor))
 
 (in-package #:slither/utils)
 
@@ -216,3 +220,28 @@
                                        (incf ,index-symbol (length bytes))))))
            ,@body
            ,vector-symbol)))))
+
+(deftype anchor ()
+  '(member :middle :top :right :left :bottom
+    :top-left :top-right :bottom-left :bottom-right))
+
+(-> position-apply-anchor (vec2 vec2 anchor) vec2)
+(defun position-apply-anchor (position size anchor)
+  (ecase anchor
+    (:middle position)
+    (:top (v- position (vec2 0
+                             (vy size))))
+    (:right (v- position (vec2 (vx size)
+                               0)))
+    (:left (v+ position (vec2 (vx size)
+                              0)))
+    (:bottom (v+ position (vec2 0
+                                (vy size))))
+    (:top-left (v+ position (vec2 (vx size)
+                                  (- (vy size)))))
+    (:top-right (v- position (vec2 (vx size)
+                                   (vy size))))
+    (:bottom-left (v+ position (vec2 (vx size)
+                                     (vy size))))
+    (:bottom-right (v+ position (vec2 (- (vx size))
+                                      (vy size))))))
