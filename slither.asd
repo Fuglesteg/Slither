@@ -5,6 +5,7 @@
   :version "0.0.2"
   :depends-on (#:cl-opengl
                #:3d-math
+               #:sb-bsd-sockets
                #:ieee-floats
                #:glfw
                #:pngload
@@ -40,6 +41,7 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
+               (:file "ui")
                (:file "scenes")
                (:module "networking"
                 :serial t

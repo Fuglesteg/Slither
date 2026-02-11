@@ -38,7 +38,9 @@
    (size :init (vec2 1.0 1.0))
    (rotation :init 0
              :writer (lambda (new-value)
-                       (- new-value (* 360 (floor (/ new-value 360)))))))
+                       (coerce (- new-value (* 360 (floor (/ new-value 360))))
+                               'single-float))
+             :networked t))
   (:networked t))
 
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
@@ -63,14 +65,16 @@
 
 (defbehavior sprite
     (texture
-     (depth :init 0))
+     (depth :init 0)
+     (layer :init 1))
   (:required-behaviors transform)
   (:tick
      (draw-texture (transform-position)
                    (transform-size)
                    (sprite-texture)
                    :rotation (transform-rotation)
-                   :depth (sprite-depth))))
+                   :depth (sprite-depth)
+                   :layer (sprite-layer))))
 
 (defbehavior move
   ((dx :init 0.0)
@@ -100,7 +104,8 @@
 (defbehavior camera
   ((zoom :init 1.0))
   (:tick
-   (when (and (slither/networking:clientp) (networked-simulate-p))
+   (when (and (not (slither/networking:serverp))
+              (networked-simulate-p))
      (with-accessors ((zoom camera-zoom)) *behavior*
        (when (key-held-p :i)
          (incf zoom
@@ -123,10 +128,12 @@
 (defbehavior speaker
     (sound)
   (:speaker-play ()
-   (sound-play (speaker-sound)
-               :position (transform-position)))
+   (unless (slither/networking:serverp)
+     (sound-play (speaker-sound)
+                 :position (transform-position))))
   (:speaker-stop ()
-   (sound-stop (speaker-sound))))
+   (unless (slither/networking:serverp)
+     (sound-stop (speaker-sound)))))
 
 (defbehavior listener
     ()

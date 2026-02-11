@@ -13,6 +13,7 @@
    (build-system asdf-build-system/sbcl)
    (inputs (list
             sbcl-cl-opengl
+            alsa-lib
             sbcl-3d-math
             sbcl-harmony
             sbcl-cl-mixed
