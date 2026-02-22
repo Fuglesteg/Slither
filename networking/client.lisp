@@ -119,7 +119,11 @@ Intended to be used for client-side prediction."
                                    do (alexandria:if-let ((networked (find-networked entity-id)))
                                         (setf (networked-mode networked)
                                               :client-predicted)
-                                        (push entity-id failed-ownership-application)))))))
+                                        (push entity-id failed-ownership-application)))))
+                          (:destroy
+                           (destructuring-bind (networked-object-id) subpacket
+                             (remove-entity (behavior-entity
+                                             (find-networked networked-object-id)))))))
                (dolist (entity-id failed-ownership-application)
                  (alexandria:when-let ((networked (find-networked entity-id)))
                    (setf (networked-mode networked)

@@ -9,6 +9,11 @@
         :slither/networking/connection)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export
+   :user
+   :user-name
+   :client-connection
+   :client-connection-user
+   :client-connection-entities
    :send-update
    :init-server
    :flush-server
@@ -16,7 +21,8 @@
    :on-new-connection
    :user
    :user-name
-   :run-server))
+   :run-server
+   :on-disconnect))
 
 (in-package :slither/networking/server)
 
@@ -41,6 +47,9 @@
     :initarg :user
     :accessor client-connection-user
     :type user)
+   (last-tick-received
+    :initform (current-tick)
+    :accessor client-connection-last-tick-received)
    (entities
     :initform nil
     :initarg :entities
@@ -132,6 +141,14 @@
 (defun (setf on-new-connection) (new-value)
   (setf *on-new-connection* new-value))
 
+(defvar *on-disconnect* nil)
+
+(defun on-disconnect (connection)
+  (funcall *on-disconnect* connection))
+
+(defun (setf on-disconnect) (new-value)
+  (setf *on-disconnect* new-value))
+
 (defun client-connections-add-subpacket (subpacket)
   (loop for key being the hash-keys of *client-connections*
         using (hash-value connection)
@@ -147,6 +164,11 @@
                                    entity)))
     (client-connections-add-subpacket subpacket)))
 
+(defun send-destroy-entity (entity)
+  (client-connections-add-subpacket
+   (make-subpacket :destroy
+                   (networked-id (entity-find-behavior entity 'networked)))))
+
 (defun find-connection (origin)
   (gethash origin *client-connections*))
 
@@ -161,6 +183,12 @@
 (defun run-server ()
   (glfw:init)
   (init-listener)
+  (setf (on-add-networked)
+        (lambda (networked)
+          (send-entity (behavior-entity networked))))
+  (setf (on-remove-networked)
+        (lambda (networked)
+          (send-destroy-entity (behavior-entity networked))))
   (let ((tick-delta (/ 1.0 60.0))
         (accumulator 0.0)
         (last-time (glfw:time))
@@ -175,7 +203,7 @@
               do (incf tick)
                  (decf accumulator tick-delta)
                  (let ((slither/core::*tick* tick)
-                       (slither/window:*dt* tick-delta))
+                       (slither/core::*delta-time* tick-delta))
                    #+micros (slither/window::read-repl)
                    (flush-server)
                    (loop for entity in (scene-entities (current-scene))
@@ -250,7 +278,9 @@
                                                                               (behavior-entity networked-object))))
                                           (when *on-new-connection*
                                             (on-new-connection connection)))))
-                            (:disconnect (remhash (inbound-packet-origin inbound-packet) *client-connections*))
+                            (:disconnect
+                             (remhash (inbound-packet-origin inbound-packet) *client-connections*)
+                             (on-disconnect connection))
                             (:update t #+nil(destructuring-bind (networked-object-id place-id new-value) subpacket
                                               (networked-apply-update (find-networked networked-object-id)
                                                                       place-id
@@ -276,11 +306,22 @@
                                                          (current-tick)
                                                          (destructuring-bind (inputs) subpacket
                                                            (loop for input in inputs
-                                                                 collect (cons input :held)))))))
+                                                                 collect (cons input :held))))))
+                            (:destroy (destructuring-bind (networked-object-id) subpacket
+                                        (remove-entity
+                                         (behavior-entity
+                                          (find-networked networked-object-id))))))
                           (skip-packet ()
                             :report "Skip the current packet"
                             t)))
                (when connection
+                 (setf (client-connection-last-tick-received connection) (current-tick))
                  (connection-acknowledge-received connection packet-id)
                  (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets)))))
-  (setf (fill-pointer *inbound-packet-buffer*) 0))
+  (setf (fill-pointer *inbound-packet-buffer*) 0)
+  ;; Remove timed out connections
+  (do-hash-table (client-origin client-connection *client-connections*)
+    (when (< (client-connection-last-tick-received client-connection)
+             (- (current-tick) 100))
+      (remhash client-origin *client-connections*)
+      (on-disconnect client-connection))))

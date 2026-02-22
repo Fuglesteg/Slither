@@ -173,7 +173,12 @@
          (packet-write-byte 6 :bytes 1)
          (packet-write-byte packet-length :bytes 2)
          (dolist (entity-id entity-ids)
-           (packet-write-byte entity-id :bytes 2))))))))
+           (packet-write-byte entity-id :bytes 2))))))
+    (:destroy
+     (destructuring-bind (networked-object-id) arguments
+       (with-vector-writer (make-octet-vector 3) (:write-integer packet-write-byte)
+         (packet-write-byte 7 :bytes 1)
+         (packet-write-byte networked-object-id :bytes 2))))))
 
 (defun parse-subpacket (subpacket)
   (with-vector-reader subpacket (:read-integer packet-read-bytes
@@ -237,7 +242,12 @@
          (values (list
                   :owner
                   entity-ids)
-                 (+ packet-length 3)))))))
+                 (+ packet-length 3))))
+      (7
+       (values (list
+                :destroy
+                (packet-read-bytes 2))
+               3)))))
 
 (defconstant +packet-max-size+ 1200)
 

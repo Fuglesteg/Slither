@@ -19,7 +19,9 @@
            :networked-static-p
            :networked-client-predicted-p
            :networked-owned-p
-           :networked-mode))
+           :networked-mode
+           :on-add-networked
+           :on-remove-networked))
 
 (in-package :slither/networking/networked)
 
@@ -36,6 +38,32 @@
 
 (defun find-networked (id)
   (gethash id (networked-objects)))
+
+(defvar *on-remove-networked* (lambda (networked) (declare (ignore networked))))
+
+(defun on-remove-networked (networked)
+  (funcall *on-remove-networked* networked))
+
+(defun (setf on-remove-networked) (new-value)
+  (setf *on-remove-networked* new-value))
+
+(defun remove-networked (networked)
+  (on-remove-networked networked)
+  (remhash (networked-id networked) (networked-objects)))
+
+(defvar *on-add-networked* (lambda (networked) (declare (ignore networked))))
+
+(defun on-add-networked (networked)
+  (funcall *on-add-networked* networked))
+
+(defun (setf on-add-networked) (new-value)
+  (setf *on-add-networked* new-value))
+
+(defun add-networked (networked)
+  (on-add-networked networked)
+  (setf (gethash (networked-id networked)
+                 (networked-objects))
+        networked))
 
 (defmethod scene-make-networked ((scene scene))
   (setf (scene-value scene 'networked)
@@ -59,8 +87,7 @@
   (:networked t)
   (:start
    (when (networked-objects)
-     (setf (gethash (networked-id) (networked-objects))
-           *behavior*)
+     (add-networked *behavior*)
      (let ((entity *entity*))
        (flet ((slot-accessor (slot behavior)
                 (if behavior
@@ -74,26 +101,8 @@
                do (vector-push (slot-accessor networked-slot
                                               slot-behavior)
                                (networked-update-places)))))))
-  #+nil(:tick
-   (ecase (networked-mode)
-     (:client-predicted
-      (loop for unprocessed-input in (unprocessed-inputs)
-            do (networked-apply-input networked unprocessed-input)))
-     (:owned)
-     (:static nil)))
-
-  #+nil(:networked-find-update-place (networked place-id)
-   (aref (networked-update-places networked) place-id))
-
-  #+nil(:networked-apply-update (networked place-id new-value)
-   (funcall (networked-find-update-place networked place-id) new-value))
-
-  #+nil(:networked-send-update (networked place-id new-value)
-        (send-subpacket :update (networked-id networked) place-id new-value)))
-
-(defun networked-apply-input (networked inputs)
-  (let ((slither/input::*keys* inputs))
-    (tick (behavior-entity networked))))
+  (:destroy
+   (remove-networked *behavior*)))
 
 (defun networked-apply-update (networked place-id new-value)
   (funcall (networked-find-update-place networked place-id) new-value))
