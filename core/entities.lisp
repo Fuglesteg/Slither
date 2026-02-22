@@ -27,6 +27,15 @@
   (loop for behavior in (entity-behaviors entity)
         do (tick behavior)))
 
+(defgeneric fixed-tick (entity)
+  (:method ((entity entity)))
+  (:method :around ((entity entity))
+    (let ((*entity* entity))
+      (call-next-method)))
+  (:method :before ((entity entity))
+    (loop for behavior in (entity-behaviors entity)
+          do (fixed-tick behavior))))
+
 (defgeneric start (entity))
 
 (defmethod start :around ((entity entity))
@@ -42,6 +51,15 @@
 (defmethod entity-find-behavior ((entity entity) (behavior symbol))
   (find behavior (entity-behaviors entity)
         :key #'type-of))
+
+(defgeneric entity-destroy (entity)
+  (:method :around ((*entity* entity))
+    (declare (special *entity*))
+    (call-next-method))
+  (:method :after ((entity entity))
+    (loop for behavior in (entity-behaviors entity)
+          do (behavior-destroy behavior)))
+  (:method ((entity entity))))
 
 (defgeneric behavior-required-behaviors (behavior))
 (defmethod behavior-required-behaviors ((behavior t)))
@@ -145,10 +163,22 @@
                             `(defmethod tick ((,entity-symbol ,name))
                                ,@arguments))
                           methods))
+                        ((string= keyword :fixed-tick)
+                         (push
+                          (let ((entity-symbol (gensym)))
+                            `(defmethod fixed-tick ((,entity-symbol ,name))
+                               ,@arguments))
+                          methods))
                         ((string= keyword :start)
                          (push
                           (let ((entity-symbol (gensym)))
                             `(defmethod start ((,entity-symbol ,name))
+                               ,@arguments))
+                          methods))
+                        ((string= keyword :destroy)
+                         (push
+                          (let ((entity-symbol (gensym)))
+                            `(defmethod entity-start ((,entity-symbol ,name))
                                ,@arguments))
                           methods))
                         (t

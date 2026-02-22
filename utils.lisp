@@ -64,7 +64,7 @@
           (= 0 (vy a)))
       (vec2)
       (let ((sum (+ (vx a) (vy a))))
-        (if (< -1.0e-24 sum 1.0e-24)
+        (if (< -1.0e-22 sum 1.0e-22)
             a
             (vscale a s)))))
 

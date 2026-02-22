@@ -14,6 +14,11 @@
   (declare (special *behavior*))
   (call-next-method))
 
+(defmethod fixed-tick ((behavior behavior)))
+(defmethod fixed-tick :around ((behavior behavior))
+  (let ((*behavior* behavior))
+    (call-next-method)))
+
 (defmethod start ((behavior behavior)))
 (defmethod start :around ((*behavior* behavior))
   (declare (special *behavior*))
@@ -43,6 +48,12 @@
      (let ((*behavior* (or *behavior*
                            (entity-find-behavior *entity* ',behavior))))
        ,@body)))
+
+(defgeneric behavior-destroy (behavior)
+  (:method :around ((*behavior* behavior))
+    (declare (special *behavior*))
+    (call-next-method))
+  (:method ((behavior behavior))))
 
 (defun behavior-invoke (behavior method &rest arguments)
   (let ((*behavior* behavior)
@@ -98,9 +109,19 @@
                  `(defmethod tick ((,(gensym) ,name))
                     ,@arguments)
                  methods))
+               ((string= keyword-or-symbol :fixed-tick)
+                (push
+                 `(defmethod fixed-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
                ((string= keyword-or-symbol :start)
                 (push
                  `(defmethod start ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :destroy)
+                (push
+                 `(defmethod behavior-destroy ((,(gensym) ,name))
                     ,@arguments)
                  methods))
                ((string= keyword-or-symbol :required-behaviors)

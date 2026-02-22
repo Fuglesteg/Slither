@@ -60,8 +60,16 @@
 
 (defun remove-entity (&rest entities)
   (dolist (entity entities)
+    (entity-destroy entity)
     (setf (scene-entities *scene*)
           (remove entity (scene-entities *scene*)))))
+
+(defun fixed-update-entities ()
+  (loop repeat (accumulated-ticks slither/core::*current-time*)
+        do (incf (current-tick))
+           (let ((slither/core::*delta-time* (tick-delta)))
+             (loop for entity in (scene-entities *scene*)
+                 do (fixed-tick entity)))))
 
 (defun update-entities ()
   (loop for entity in (scene-entities *scene*)
@@ -105,6 +113,7 @@
   (setf (gethash key (slot-value scene 'values)) new-value))
 
 (defmethod tick :before ((scene scene))
+  (fixed-update-entities)
   (update-entities))
 
 (defmethod tick ((scene scene)))

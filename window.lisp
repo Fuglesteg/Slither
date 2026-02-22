@@ -4,7 +4,6 @@
         #:slither/utils)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export #:frame
-           #:*dt*
            #:*window-width*
            #:*window-height*
            #:fps
@@ -30,21 +29,11 @@
         *window-height* height)
   (gl:viewport 0 0 width height))
 
-(defvar *dt* 0)
 (defvar *last-frame-time* 0)
 (defvar *current-time* 0)
 
 (defun calculate-dt ()
-  (setf *current-time* (glfw:time))
-  (setf *dt* (- *current-time* *last-frame-time*)
-        *last-frame-time* *current-time*))
-
-(let ((last-tick-time 0)
-      (tick-delta (/ 1.0 60.0)))
-  (defun calculate-tick ()
-    (when (< (+ last-tick-time tick-delta)
-             *current-time*)
-      (incf (current-tick)))))
+  (calculate-delta-time (coerce (glfw:time) 'single-float)))
 
 #+micros
 (defun read-repl ()
@@ -57,8 +46,8 @@
 (defvar *window* nil)
 
 (defun fps ()
-  (unless (= *dt* 0)
-    (/ 1 *dt*)))
+  (unless (= (delta-time) 0)
+    (/ 1 (delta-time))))
 
 (defun open-window (&rest initargs)
   (glfw:init)
@@ -86,7 +75,6 @@
          do (progn
               #+micros (read-repl)
               (calculate-dt)
-              (calculate-tick)
               (glfw:poll-events)
               (continuable
                 ,@body)

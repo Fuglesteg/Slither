@@ -5,10 +5,12 @@
         #:slither/utils)
   (:export #:start
            #:tick
+           #:fixed-tick
            #:*entity*
            #:entity
            #:entity-invoke
            #:defentity
+           #:entity-destroy
            #:entity-encode
            #:entity-decode
            #:entity-find-behavior
@@ -21,7 +23,16 @@
            #:behavior
            #:behavior-invoke
            #:defbehavior
+           #:behavior-destroy
            #:behavior-required-behaviors
            #:behavior-entity
            #:with-behaviors
-           #:current-tick))
+           #:current-tick
+           #:tick-rate
+           #:tick-delta
+           #:delta-time
+           #:dt
+           #:accumulative-delta-time
+           #:interpolation-alpha
+           #:calculate-delta-time
+           #:accumulated-ticks))

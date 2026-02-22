@@ -8,8 +8,6 @@
         #:slither/networking/networked)
   (:import-from #:slither/input
                 #:key-held-p)
-  (:import-from #:slither/window
-                #:*dt*)
   (:import-from #:slither/audio
                 #:sound-play
                 #:sound-stop
@@ -84,8 +82,8 @@
   (:tick
    (when (networked-simulate-p)
      (with-slots (dx dy speed) *behavior*
-       (incf dx (* dx 5.0 (coerce *dt* 'single-float) -1))
-       (incf dy (* dy 5.0 (coerce *dt* 'single-float) -1))
+       (incf dx (* dx 5.0 (coerce (delta-time) 'single-float) -1))
+       (incf dy (* dy 5.0 (coerce (delta-time) 'single-float) -1))
        (incf dx (+ (if (key-held-p :d)
                        speed
                        0)
@@ -99,7 +97,7 @@
                        (* speed -1)
                        0)))
          (nv+ (transform-position)
-              (v* (vec2 dx dy) *dt*))))))
+              (v* (vec2 dx dy) (delta-time)))))))
 
 (defbehavior camera
   ((zoom :init 1.0))
@@ -109,11 +107,11 @@
      (with-accessors ((zoom camera-zoom)) *behavior*
        (when (key-held-p :i)
          (incf zoom
-               *dt*))
+               (delta-time)))
        (when (and (key-held-p :o)
                   (> zoom 0.01))
          (decf zoom
-               *dt*))
+               (delta-time)))
        (set-camera-position (transform-position)
                             :zoom zoom
                             :rotation (transform-rotation))))))
