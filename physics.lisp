@@ -68,7 +68,8 @@
      (drag :init 0.0)
      (velocity :init (vec2)
                :networked t)
-     (position :init (vec2))
+     (position :init (vec2)
+               :networked t)
      (previous-position :init (vec2)))
   (:networked t)
   (:required-behaviors

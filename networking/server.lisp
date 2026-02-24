@@ -214,10 +214,14 @@
                                         do (unless (or (null input)
                                                        (eq input :processed))
                                              (if (eq input :empty)
-                                                 (tick entity)
+                                                 (progn (tick entity)
+                                                        (fixed-tick entity))
                                                  (let ((slither/input::*inputs* input))
-                                                   (tick entity)))))
-                                  (tick entity))))
+                                                   (tick entity)
+                                                   (fixed-tick entity)))))
+                                  (progn
+                                    (tick entity)
+                                    (fixed-tick entity)))))
                    (client-inputs-reset)
                    (client-inputs-shift)))))))
 

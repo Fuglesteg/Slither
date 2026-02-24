@@ -65,11 +65,8 @@
           (remove entity (scene-entities *scene*)))))
 
 (defun fixed-update-entities ()
-  (loop repeat (accumulated-ticks slither/core::*current-time*)
-        do (incf (current-tick))
-           (let ((slither/core::*delta-time* (tick-delta)))
-             (loop for entity in (scene-entities *scene*)
-                 do (fixed-tick entity)))))
+  (loop for entity in (scene-entities *scene*)
+        do (fixed-tick entity)))
 
 (defun update-entities ()
   (loop for entity in (scene-entities *scene*)
@@ -113,10 +110,19 @@
   (setf (gethash key (slot-value scene 'values)) new-value))
 
 (defmethod tick :before ((scene scene))
-  (fixed-update-entities)
+  (fixed-tick scene)
   (update-entities))
 
 (defmethod tick ((scene scene)))
+
+(defmethod fixed-tick :around ((scene scene))
+  (loop repeat (accumulated-ticks slither/core::*current-time*)
+        do (incf (current-tick))
+           (call-next-method)
+           (let ((slither/core::*delta-time* (tick-delta)))
+             (fixed-update-entities))))
+
+(defmethod fixed-tick ((scene scene)))
 
 (defmethod start :before ((scene scene))
   (loop for entity in (scene-entities scene)
@@ -146,5 +152,7 @@
                                  (scene-method 'start))
                                 ((string= keyword :tick)
                                  (scene-method 'tick))
+                                ((string= keyword :fixed-tick)
+                                 (scene-method 'fixed-tick))
                                 ((string= keyword :on-switch)
                                  (scene-method 'scene-on-switch))))))))
