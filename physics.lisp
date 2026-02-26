@@ -8,6 +8,7 @@
   (:export :circle-collider
            :circle-collision-p
            :rigidbody
+           :rigidbody-position
            :rigidbody-velocity
            :rigidbody-drag
            :rigidbody-velocity+
