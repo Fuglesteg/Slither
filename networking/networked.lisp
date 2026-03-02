@@ -123,8 +123,9 @@
       :static))
 
 (defun networked-simulate-p ()
-  (let ((networked (entity-find-behavior *entity* 'networked)))
-    (unless networked
-      (return-from networked-simulate-p t))
-    (member (networked-mode networked)
-            (list :owned :client-predicted))))
+  (when (networking-environment)
+    (let ((networked (entity-find-behavior *entity* 'networked)))
+      (if networked
+          (member (networked-mode networked)
+                  (list :owned :client-predicted))
+          t))))
