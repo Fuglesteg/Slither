@@ -18,7 +18,9 @@
            :key-released-p
            :set-input-table
            :encode-inputs
-           :decode-inputs))
+           :decode-inputs
+           :mouse-scroll-x
+           :mouse-scroll-y))
 
 (in-package #:slither/input)
 
@@ -49,6 +51,21 @@
     (:press (key-press button))
     (:release (key-release button)))))
 
+(let ((scrollx 0.0)
+      (scrolly 0.0))
+  (defun (setf mouse-scroll-x) (new-value)
+    (setf scrollx new-value))
+  (defun mouse-scroll-x ()
+    scrollx)
+  (defun (setf mouse-scroll-y) (new-value)
+    (setf scrollx new-value))
+  (defun mouse-scroll-y ()
+    scrolly))
+
+(defmethod glfw:mouse-scrolled ((window game-window) xoffset yoffset)
+  (setf (mouse-scroll-x) xoffset)
+  (setf (mouse-scroll-y) yoffset))
+
 (defun key-press (key)
   (push (cons key :pressed) *inputs*))
 
@@ -62,6 +79,8 @@
   (eq :released (key-state key)))
 
 (defun input-poll ()
+  (setf (mouse-scroll-x) 0.0)
+  (setf (mouse-scroll-y) 0.0)
   (setf *inputs*
         (mapcar (lambda (key-data)
                   (destructuring-bind (key . state) key-data
@@ -104,7 +123,8 @@
 
 (set-input-table :w :a :s :d
                  :space :tab
-                 :left :right)
+                 :left :right
+                 :left-click :right-click)
 
 (defun encode-inputs (inputs)
   (let ((encoded 0))
