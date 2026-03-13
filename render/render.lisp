@@ -3,15 +3,11 @@
         :slither/utils
         :org.shirakumo.fraf.math.matrices
         :org.shirakumo.fraf.math.vectors)
+  (:use-reexport :slither/render/texture)
   (:import-from :slither/render/uniform
                 #:uniform-value
                 #:uniform-location
                 #:uniform)
-  (:import-from :slither/render/texture
-                #:texture
-                #:texture-id
-                #:with-bound-texture
-                #:texture-asset)
   (:import-from :slither/render/array-texture
                 #:array-texture
                 #:array-texture-asset
@@ -352,8 +348,8 @@
                                                    :layer layer
                                                    :depth depth)
                   :model-matrix (nm* (mtranslation position)
-                                     (mscaling size)
-                                     (m3rotate rotation))
+                                     (m3rotate rotation)
+                                     (mscaling size))
                   :texture-scale texture-scale
                   :color color)))
 
@@ -370,8 +366,8 @@
                                                    :layer layer
                                                    :depth depth)
                   :model-matrix (nm* (mtranslation position)
-                                     (mscaling size)
-                                     (m3rotate rotation))
+                                     (m3rotate rotation)
+                                     (mscaling size))
                   :texture-index index
                   :color color)))
 

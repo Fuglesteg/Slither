@@ -3,9 +3,12 @@
   (:import-from :slither/assets
                 :asset-data)
   (:export #:texture
+           #:texture-id
            #:texture-bind
            #:texture-unbind
            #:texture-asset
+           #:texture-width
+           #:texture-height
            #:with-bound-texture))
 
 (in-package #:slither/render/texture)
@@ -17,7 +20,15 @@
    (asset
     :reader texture-asset
     :initform nil
-    :initarg :asset)))
+    :initarg :asset)
+   (width
+    :accessor texture-width
+    :initform 0
+    :initarg :width)
+   (height
+    :accessor texture-height
+    :initform 0
+    :initarg :height)))
 
 (defun (setf texture-asset) (new-asset texture)
   (setf (slot-value texture 'asset) new-asset)
@@ -39,6 +50,10 @@
                        0 :rgba :unsigned-byte image-data))
     (gl:generate-mipmap :texture-2d)
     (gl:bind-texture :texture-2d 0)
+    (setf (texture-width texture)
+          (pngload:width png))
+    (setf (texture-height texture)
+          (pngload:height png))
     (setf (texture-id texture) id)))
 
 (defmethod initialize-instance :after ((texture texture) &key)

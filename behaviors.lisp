@@ -68,7 +68,13 @@
   (:required-behaviors transform)
   (:tick
      (draw-texture (transform-position)
-                   (transform-size)
+                   ;; Scale transform-size by the dimensions of the texture
+                   (let* ((width (texture-width (sprite-texture)))
+                          (height (texture-height (sprite-texture)))
+                          (sum (+ height width)))
+                     (v* (transform-size)
+                         (vec2 (/ sum height 2)
+                               (/ sum width 2))))
                    (sprite-texture)
                    :rotation (transform-rotation)
                    :depth (sprite-depth)
