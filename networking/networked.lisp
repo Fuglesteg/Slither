@@ -102,7 +102,8 @@
                                               slot-behavior)
                                (networked-update-places)))))))
   (:destroy
-   (remove-networked *behavior*)))
+   (when (networked-objects)
+     (remove-networked *behavior*))))
 
 (defun networked-apply-update (networked place-id new-value)
   (funcall (networked-find-update-place networked place-id) new-value))
