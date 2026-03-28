@@ -9,12 +9,14 @@
            :circle-collision-p
            :rigidbody
            :rigidbody-position
+           :rigidbody-mass
            :rigidbody-velocity
            :rigidbody-drag
            :rigidbody-velocity+
            :point-collides-p
            :circle-overlaps-point-p
-           :circle-collisions))
+           :circle-collisions
+           :inverse-mass))
 
 (in-package #:slither/physics)
 
@@ -62,8 +64,13 @@
        (circle-collision-p circle1-position (circle-radius circle1-collider)
                            circle2-position (circle-radius *behavior*))))))
 
+(defun inverse-mass (mass)
+  (if (= mass 0.0)
+      0.0
+      (/ 1 mass)))
+
 (defbehavior rigidbody
-    (colliders
+    ((colliders :init (list))
      (mass :init 1.0)
      (bounciness :init 0.0)
      (drag :init 0.0)
@@ -125,16 +132,12 @@
                                                   (rigidbody-mass foreign-rigidbody)
                                                   0.0)))
                            (unless (= 0 (+ this-mass foreign-mass))
-                             (let* ((this-inverse-mass (if (= this-mass 0.0)
-                                                           0.0
-                                                           (/ 1 this-mass)))
+                             (let* ((this-inverse-mass (inverse-mass this-mass))
                                     (this-bounciness (rigidbody-bounciness *behavior*))
                                     (foreign-bounciness (if foreign-rigidbody
                                                             (rigidbody-bounciness foreign-rigidbody)
                                                             0.0))
-                                    (foreign-inverse-mass (if (= foreign-mass 0.0)
-                                                              0.0
-                                                              (/ 1 foreign-mass)))
+                                    (foreign-inverse-mass (inverse-mass foreign-mass))
                                     (foreign-velocity (if foreign-rigidbody
                                                           (rigidbody-velocity foreign-rigidbody)
                                                           (vec2)))
