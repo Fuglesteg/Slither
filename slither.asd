@@ -10,9 +10,8 @@
                #:glfw
                #:pngload
                #:harmony
-               #:cl-mixed-mpg123
-               (:feature :linux #:cl-mixed-pulse)
-               (:feature :windows #:cl-mixed-wasapi)
+               #:cl-mixed-vorbis
+               #:cl-mixed-sdl2
                #:static-vectors
                (:feature :dev #:file-notify)
                #:alexandria
