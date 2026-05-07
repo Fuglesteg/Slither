@@ -33,7 +33,8 @@
 (defbehavior transform
   ((position :init (vec2 0.0)
              :networked t)
-   (size :init (vec2 1.0 1.0))
+   (size :init (vec2 1.0 1.0)
+         :networked t)
    (rotation :init 0
              :writer (lambda (new-value)
                        (coerce (- new-value (* 360 (floor (/ new-value 360))))

@@ -4,6 +4,7 @@
         :slither/utils
         :slither/serialization
         :slither/scenes
+        :slither/input
         :slither/networking/protocol
         :slither/networking/connection)
   (:export :networked-objects
@@ -20,6 +21,8 @@
            :networked-client-predicted-p
            :networked-owned-p
            :networked-mode
+           :networked-last-tick-update
+           :networked-get-updated-places
            :on-add-networked
            :on-remove-networked))
 
@@ -81,35 +84,45 @@
      (mode :init (if (eq (networking-environment) :client)
                      :static
                      :owned))
-     (actions :init (make-hash-table :test 'eq))
-     (update-places :init (make-array 100
-                                      :fill-pointer 0)))
+     (last-tick-update :init 0)
+     (updated-places :init '()))
   (:networked t)
   (:start
    (when (networked-objects)
-     (add-networked *behavior*)
-     (let ((entity *entity*))
-       (flet ((slot-accessor (slot behavior)
-                (if behavior
-                    (lambda (new-value)
-                      (setf (slot-value (entity-find-behavior entity behavior)
-                                        slot)
-                            new-value))
-                    (lambda (new-value)
-                      (setf (slot-value entity slot) new-value)))))
-         (loop for (networked-slot slot-behavior) in (entity-networked-slots-with-behaviors entity)
-               do (vector-push (slot-accessor networked-slot
-                                              slot-behavior)
-                               (networked-update-places)))))))
+     (add-networked *behavior*)))
+  ;; TODO: Should this happen pre tick?
+  (:tick
+   (case (networked-mode)
+     (:client-predicted
+      (let ((ticks-to-predict (- (current-tick) (networked-last-tick-update))))
+        (when (< 0 ticks-to-predict)
+          (copy-inputs slither/input::*inputs*)
+          (setf (networked-last-tick-update) (current-tick)))))
+      (:static)
+      (:owned)))
   (:destroy
    (when (networked-objects)
      (remove-networked *behavior*))))
 
 (defun networked-apply-update (networked place-id new-value)
-  (funcall (networked-find-update-place networked place-id) new-value))
+  (let ((entity (behavior-entity networked)))
+    (multiple-value-bind (slot-symbol behavior) (entity-find-networked-slot-symbol entity place-id)
+      (if behavior
+          (setf (slot-value (entity-find-behavior entity behavior) slot-symbol) new-value)
+          (setf (slot-value entity slot-symbol) new-value)))))
 
-(defun networked-find-update-place (networked place-id)
- (aref (networked-update-places networked) place-id))
+(defun networked-register-place-change (networked place-symbol &optional behavior-symbol)
+  (when (eq (networking-environment) :server)
+    (pushnew (entity-find-networked-slot-id (behavior-entity networked) place-symbol behavior-symbol)
+             (networked-updated-places networked))))
+
+(defun networked-get-updated-places (networked)
+  (prog1
+      (loop for updated-place in (networked-updated-places networked)
+            collect (multiple-value-bind (place-symbol behavior-symbol)
+                        (entity-find-networked-slot-symbol (behavior-entity networked) updated-place)
+                      (cons place-symbol behavior-symbol)))
+    (setf (networked-updated-places networked) nil)))
 
 (defun networked-owned-p (networked)
   (eq (networked-mode networked)

@@ -2,7 +2,8 @@
   (:use #:cl
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
-        #:slither/utils)
+        #:slither/utils
+        #:slither/serialization)
   (:export #:start
            #:tick
            #:fixed-tick
@@ -17,6 +18,7 @@
            #:entity-behaviors
            #:entity-type-id
            #:entity-find-networked-slot-id
+           #:entity-find-networked-slot-symbol
            #:entity-networked-slots-with-behaviors
            #:entity-networked-slots
            #:*behavior*
@@ -29,6 +31,7 @@
            #:with-behaviors
            #:current-tick
            #:tick-rate
+           #:last-tick-time
            #:tick-delta
            #:delta-time
            #:dt

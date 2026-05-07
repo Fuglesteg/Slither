@@ -25,6 +25,7 @@
          (file-name (git-file-name "cl-vorbis" version))
          (sha256
           (base32 "0713pl5c2khfpf8m3h1l2y0ilack7akf580h70jq6qcrnq3h4b40"))
+         (modules '((guix build utils)))
          (snippet
           `(delete-file-recursively "static"))))
       (build-system asdf-build-system/sbcl)

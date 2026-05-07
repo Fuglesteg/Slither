@@ -40,7 +40,7 @@
                                                     :initial-element 0
                                                     :element-type 'octet))
          (output-pos 0))
-    (loop for row from 0 below png-height by sprite-height
+    (loop for row downfrom (- png-height sprite-height) downto 0 by sprite-height
           do (loop for column from 0 below png-width by sprite-width
                    do (let ((sprite-location (+ (* row png-width) column)))
                         (loop for i from 0 below (* sprite-width sprite-height)

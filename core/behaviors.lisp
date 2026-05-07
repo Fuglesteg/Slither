@@ -25,7 +25,6 @@
   (call-next-method))
 
 (defmacro define-behavior-accessor (behavior slot-name &key reader writer networked)
-  (declare (ignore networked))
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name))))
         (accessor-form `(slot-value
                          (etypecase behavior
@@ -39,9 +38,16 @@
                 `(funcall reader ,accessor-form)
                 accessor-form))
        (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior* *entity*)))
-           (setf ,accessor-form ,(if writer
-                                     `(funcall ,writer new-value)
-                                     'new-value))))))
+         (declare (optimize (debug 3)))
+         ,@(when networked
+             `((let ((networked (etypecase behavior
+                                  (entity (entity-find-behavior behavior (uiop:find-symbol* :networked :slither/networking/networked)))
+                                  (,behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked)))
+                                  (behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked))))))
+                 (uiop:symbol-call :slither/networking/networked :networked-register-place-change networked ',slot-name ',behavior))))
+         (setf ,accessor-form ,(if writer
+                                   `(funcall ,writer new-value)
+                                   'new-value))))))
 
 (defmacro define-behavior-method (behavior name method-arguments &body body)
   `(defun ,name ,method-arguments
@@ -65,6 +71,7 @@
     nil))
 
 (defgeneric behavior-networked-slots (behavior-symbol))
+(defgeneric behavior-networked-slots-overrides (behavior-symbol))
 
 (defgeneric behavior-encode (behavior))
 (defgeneric behavior-encode-full (behavior))
@@ -76,6 +83,7 @@
         clos-slots
         slot-symbols
         networked-slots
+        networked-slots-overrides
         (slot-readers (make-hash-table))
         (slot-writers (make-hash-table)))
     (loop for slot in slots
@@ -84,11 +92,14 @@
                         (push (list slot
                                     :initarg (intern (symbol-name slot) :keyword))
                               clos-slots))
-                 (destructuring-bind (symbol &key init writer reader networked) slot
+                 (destructuring-bind (symbol &key init writer reader networked networked-overrides) slot
                    (push symbol
                          slot-symbols)
                    (when networked
                      (push symbol networked-slots))
+                   (when networked-overrides
+                     (dolist (override networked-overrides)
+                       (push override networked-slots-overrides)))
                    (let ((clos-slot (list symbol :initarg (intern (symbol-name symbol) :keyword))))
                      (when writer
                        (setf (gethash symbol slot-writers) writer))
@@ -147,7 +158,8 @@
                for slot-reader = (gethash slot-symbol slot-readers)
                collect `(define-behavior-accessor ,name ,slot-symbol
                           :reader ,slot-reader
-                          :writer ,slot-writer))
+                          :writer ,slot-writer
+                          :networked ,(member slot-symbol networked-slots)))
        ,@(flet ((behavior-encoder (slots)
                   `(let ((behavior-data (apply #'concatenate
                                                '(vector (unsigned-byte 8))
@@ -180,4 +192,6 @@
                ,(behavior-decoder networked-slots))))
        (defmethod behavior-networked-slots ((behavior-symbol (eql ',name)))
          ',networked-slots)
+       (defmethod behavior-networked-slots-overrides ((behavior-symbol (eql ',name)))
+         ',networked-slots-overrides)
        ,@methods)))

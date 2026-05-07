@@ -77,8 +77,10 @@
      (velocity :init (vec2)
                :networked t)
      (position :init (vec2)
-               :networked t)
-     (previous-position :init (vec2)))
+               :networked t
+               :networked-overrides ((transform position)))
+     (previous-position :init (vec2)
+                        :networked t))
   (:networked t)
   (:required-behaviors
    transform)
@@ -94,6 +96,7 @@
                 (rigidbody-position)
                 (interpolation-alpha))))
   (:fixed-tick
+   (when (slither/networking:networked-simulate-p)
    (setf (rigidbody-previous-position)
          (rigidbody-position))
    ;; Drag
@@ -206,6 +209,6 @@
                                                (v* friction-impulse foreign-inverse-mass)))))))))))))
    ;; Update position
    (setf (rigidbody-position)
-         (v+ (rigidbody-position) (rigidbody-velocity))))
+         (v+ (rigidbody-position) (rigidbody-velocity)))))
   (:rigidbody-velocity+ (force)
    (setf (rigidbody-velocity) (nv+ (rigidbody-velocity) force))))

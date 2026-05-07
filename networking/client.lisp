@@ -30,8 +30,8 @@
 
 (defparameter *inbound-packet-buffer* (make-array 1000
                                                   :fill-pointer 0
-                                                  :initial-element (make-array 0 :element-type '(unsigned-byte 8))
-                                                  :element-type '(vector (unsigned-byte 8))))
+                                                  :initial-element (make-octet-vector 0)
+                                                  :element-type 'octet-vector))
 
 (defun run-server-connection (address &optional username)
   (unwind-protect
@@ -48,7 +48,7 @@
      (run-server-connection address username))
    :name "server-connection"))
 
-(defconstant +input-buffer-size+ 10)
+(defconstant +input-buffer-size+ 20)
 
 (defvar *input-buffer*
   (make-array +input-buffer-size+
@@ -72,63 +72,71 @@
                             (make-subpacket :input
                                             inputs)))
 
+(-> unprocessed-inputs () (vector t))
 (defun unprocessed-inputs ()
   "Returns the inputs that the server has not yet processed.
 Intended to be used for client-side prediction."
   *input-buffer*)
 
+(-> flush-server-connection () ())
 (defun flush-server-connection ()
   (send-inputs slither/input::*inputs*)
   (connection-flush *server-connection*)
-  (loop for packet across *inbound-packet-buffer*
-        do (multiple-value-bind (protocol
-                                 tick
-                                 packet-id
-                                 acknowledging-packet-id
-                                 last-acknowledged-packets
-                                 subpackets) (parse-packet packet)
-             (declare (ignore protocol))
-             (connection-acknowledge-received *server-connection*
-                                              packet-id)
-             (connection-acknowledge-sent *server-connection*
-                                          acknowledging-packet-id
-                                          last-acknowledged-packets)
-             (setf (current-tick) tick)
-             (let (failed-ownership-application)
-               (loop for (subpacket-type . subpacket) in subpackets
-                     do (ecase subpacket-type
-                          (:update
-                           (destructuring-bind (networked-object-id place-id new-value) subpacket
-                             (alexandria:when-let ((networked-object (find-networked networked-object-id)))
-                               (networked-apply-update networked-object
-                                                       place-id
-                                                       new-value))))
-                          (:action
-                           #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
-                                  (apply #'networked-apply-action
-                                         (find-networked networked-object-id)
-                                         action-id
-                                         arguments)))
-                          (:entity
-                           (destructuring-bind (entity-type-id entity) subpacket
-                             (declare (ignore entity-type-id))
-                             (add-entity entity)))
-                          (:owner
-                           (destructuring-bind (entity-ids) subpacket
-                             (loop for entity-id in entity-ids
-                                   do (alexandria:if-let ((networked (find-networked entity-id)))
-                                        (setf (networked-mode networked)
-                                              :client-predicted)
-                                        (push entity-id failed-ownership-application)))))
-                          (:destroy
-                           (destructuring-bind (networked-object-id) subpacket
-                             (remove-entity (behavior-entity
-                                             (find-networked networked-object-id)))))))
-               (dolist (entity-id failed-ownership-application)
-                 (alexandria:when-let ((networked (find-networked entity-id)))
-                   (setf (networked-mode networked)
-                         :client-predicted))))))
-  (setf (fill-pointer *inbound-packet-buffer*) 0)
+  (let ((inbound-packet-buffer (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))))
+    (setf (fill-pointer *inbound-packet-buffer*) 0)
+    (loop for packet across inbound-packet-buffer
+          do (multiple-value-bind (protocol
+                                   tick
+                                   packet-id
+                                   acknowledging-packet-id
+                                   last-acknowledged-packets
+                                   subpackets) (parse-packet packet)
+               (declare (ignore protocol))
+               (connection-acknowledge-received *server-connection*
+                                                packet-id)
+               (connection-acknowledge-sent *server-connection*
+                                            acknowledging-packet-id
+                                            last-acknowledged-packets)
+               (when (> tick (current-tick))
+                 (setf (current-tick) tick)
+                 (setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
+                 (slither/scenes::fixed-update-entities))
+               (let (failed-ownership-application)
+                 (loop for (subpacket-type . subpacket) in subpackets
+                       do (ecase subpacket-type
+                            (:update
+                             (destructuring-bind (networked-object-id place-id new-value) subpacket
+                               (when-let ((networked-object (find-networked networked-object-id)))
+                                 (when (<= (networked-last-tick-update networked-object) tick)
+                                   (networked-apply-update networked-object
+                                                           place-id
+                                                           new-value)
+                                   (setf (networked-last-tick-update networked-object) tick)))))
+                            (:action
+                             #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
+                                    (apply #'networked-apply-action
+                                           (find-networked networked-object-id)
+                                           action-id
+                                           arguments)))
+                            (:entity
+                             (destructuring-bind (entity-type-id entity) subpacket
+                               (declare (ignore entity-type-id))
+                               (add-entity entity)))
+                            (:owner
+                             (destructuring-bind (entity-ids) subpacket
+                               (loop for entity-id in entity-ids
+                                     do (alexandria:if-let ((networked (find-networked entity-id)))
+                                          (setf (networked-mode networked)
+                                                :client-predicted)
+                                          (push entity-id failed-ownership-application)))))
+                            (:destroy
+                             (destructuring-bind (networked-object-id) subpacket
+                               (when-let ((networked (find-networked networked-object-id)))
+                                 (remove-entity (behavior-entity networked)))))))
+                 (dolist (entity-id failed-ownership-application)
+                   (alexandria:when-let ((networked (find-networked entity-id)))
+                     (setf (networked-mode networked)
+                           :client-predicted)))))))
   ;; Shift input buffer so that only the inputs from the last acknowledged packet to the current packet are available
   (input-buffer-add slither/input::*inputs*)
   (setf (fill-pointer *input-buffer*)

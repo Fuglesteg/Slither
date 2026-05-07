@@ -55,9 +55,12 @@
     :initarg :entities
     :reader client-connection-entities)
    (inputs
+    :initform (slither/input:copy-inputs slither/input::*inputs*)
+    :reader client-connection-inputs)
+   (inputs-buffer
     :initform (make-array +tick-buffer-size+
                           :initial-element nil)
-    :accessor client-connection-inputs)))
+    :accessor client-connection-inputs-buffer)))
 
 (defun (setf client-connection-entities) (new-entities client-connection)
   (setf (slot-value client-connection 'entities)
@@ -73,14 +76,14 @@
 (defun client-inputs-reset ()
   (do-hash-table (remote client *client-connections*)
     (declare (ignore remote))
-    (do-each (inputs (client-connection-inputs client))
+    (do-each (inputs (client-connection-inputs-buffer client))
       (unless (null inputs)
         (setf inputs :processed)))))
 
 (defun client-inputs-add (client tick inputs)
   (let ((index (- (current-tick) tick)))
     (when (< index +tick-buffer-size+)
-      (setf (aref (client-connection-inputs client)
+      (setf (aref (client-connection-inputs-buffer client)
                   index)
             inputs))))
 
@@ -93,7 +96,7 @@
 (defun client-inputs-shift ()
   (do-hash-table (remote client *client-connections*)
     (declare (ignore remote))
-    (with-accessors ((inputs client-connection-inputs)) client
+    (with-accessors ((inputs client-connection-inputs-buffer)) client
       (setf (aref inputs 0) nil)
       (replace inputs inputs
                :start1 1))))
@@ -114,19 +117,21 @@
                                                   :element-type 'inbound-packet))
 
 (defun run-listener ()
-  (socket-open)
-  (socket-listen)
-  (unwind-protect
-       (loop (multiple-value-bind (data remote)
-                 (socket-receive)
-               (when (and data
-                          (> (length data) 0))
-                 (vector-push (make-instance 'inbound-packet
-                                             :origin remote
-                                             :data data)
-                              *inbound-packet-buffer*))))
-    (socket-close)
-    (setf *client-connections* nil)))
+  (unless (and (boundp 'slither/networking/socket::*socket*)
+               slither/networking/socket::*socket*)
+    (socket-open)
+    (socket-listen)
+    (unwind-protect
+         (loop (multiple-value-bind (data remote)
+                   (socket-receive)
+                 (when (and data
+                            (> (length data) 0))
+                   (vector-push (make-instance 'inbound-packet
+                                               :origin remote
+                                               :data data)
+                                *inbound-packet-buffer*))))
+      (socket-close)
+      (setf *client-connections* nil))))
 
 (defun init-listener ()
   (sb-thread:make-thread
@@ -194,10 +199,15 @@
         (last-time (glfw:time))
         (tick 0))
     (loop
+      (let ((wake-time (+ last-time tick-delta)))
+        (sleep (max 0 (- (- wake-time (glfw:time)) 0.002))) ; sleep most of it
+        (loop until (>= (glfw:time) wake-time))
+
       (let* ((current-time (glfw:time))
              (frame-time (- current-time last-time)))
-        (setf last-time current-time)
+        (setf last-time wake-time)
         (incf accumulator frame-time)
+
         ;; Process all accumulated ticks
         (loop while (>= accumulator tick-delta)
               do (incf tick)
@@ -210,20 +220,29 @@
                          do (let ((client-connection
                                     (entity-client-connection entity)))
                               (if client-connection
-                                  (loop for input across (client-connection-inputs client-connection)
+                                  (loop for input across (client-connection-inputs-buffer client-connection)
                                         do (unless (or (null input)
                                                        (eq input :processed))
                                              (if (eq input :empty)
                                                  (progn (tick entity)
                                                         (fixed-tick entity))
-                                                 (let ((slither/input::*inputs* input))
-                                                   (tick entity)
-                                                   (fixed-tick entity)))))
+                                                 (destructuring-bind (buttons . analogues) input
+                                                   (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
+                                                     (slither/input::apply-decoded-inputs buttons analogues)
+                                                     (tick entity)
+                                                     (fixed-tick entity)
+                                                     (do-hash-table (input-name input slither/input::*inputs*)
+                                                       (declare (ignore input-name))
+                                                       (typecase input
+                                                         (slither/input::button-input
+                                                          (case (slither/input::button-input-value input)
+                                                            (:released (setf (slither/input::button-input-value input) nil))
+                                                            (:pressed (setf (slither/input::button-input-value input) :held)))))))))))
                                   (progn
                                     (tick entity)
                                     (fixed-tick entity)))))
                    (client-inputs-reset)
-                   (client-inputs-shift)))))))
+                   (client-inputs-shift))))))))
 
 (defun init-server ()
   (sb-thread:make-thread #'run-server
@@ -231,26 +250,26 @@
 
 (defun flush-server ()
   ;; Get updates from networked objects
-  (loop for key being the hash-keys of (networked-objects)
-        using (hash-value networked-object)
-        do (loop for (networked-slot slot-behavior) in (entity-networked-slots-with-behaviors
-                                                        (behavior-entity networked-object))
-                 do (send-update key
-                                 (entity-find-networked-slot-id (behavior-entity networked-object)
-                                                                networked-slot
+  (do-hash-table (key networked-object (networked-objects))
+    (loop for (networked-slot . slot-behavior) in (networked-get-updated-places networked-object)
+          do (send-update key
+                          (entity-find-networked-slot-id (behavior-entity networked-object)
+                                                         networked-slot
+                                                         slot-behavior)
+                          (if slot-behavior
+                              (slot-value (entity-find-behavior (behavior-entity networked-object)
                                                                 slot-behavior)
-                                 (if slot-behavior
-                                     (slot-value (entity-find-behavior (behavior-entity networked-object)
-                                                                       slot-behavior)
-                                                 networked-slot)
-                                     (slot-value (behavior-entity networked-object)
-                                                 networked-slot)))))
+                                          networked-slot)
+                              (slot-value (behavior-entity networked-object)
+                                          networked-slot)))))
   ;; Send outbound packets to clients
-  (loop for key being the hash-keys of *client-connections*
-        using (hash-value client-connection)
-        do (connection-flush client-connection))
+  (do-hash-table (address client-connection *client-connections*)
+    (declare (ignore address))
+    (connection-flush client-connection))
   ;; Process inbound packets
-  (loop for inbound-packet across *inbound-packet-buffer*
+  (let ((inbound-packet-buffer (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))))
+    (setf (fill-pointer *inbound-packet-buffer*) 0)
+    (loop for inbound-packet across inbound-packet-buffer
         do (multiple-value-bind (protocol
                                  tick
                                  packet-id
@@ -296,15 +315,19 @@
                                                    arguments)))
                             (:entity nil)
                             (:input (when connection
-                                      (destructuring-bind (inputs) subpacket
-                                        (if (null inputs)
+                                      (destructuring-bind (buttons analogues) subpacket
+                                        (if (and (null buttons)
+                                                 (null analogues))
                                             (client-inputs-add connection
                                                                (current-tick)
                                                                :empty)
-                                            (client-inputs-add connection
-                                                               (current-tick)
-                                                               (loop for input in inputs
-                                                                     collect (cons input :held)))))
+                                            (progn
+                                              #+nil(break "Buttons: ~a. ~% Analogues: ~a"
+                                                     buttons
+                                                     analogues)
+                                              (client-inputs-add connection
+                                                                 (current-tick)
+                                                                 (cons buttons analogues)))))
                                       #+server-reconciliation
                                       (client-inputs-add connection
                                                          (current-tick)
@@ -321,8 +344,7 @@
                (when connection
                  (setf (client-connection-last-tick-received connection) (current-tick))
                  (connection-acknowledge-received connection packet-id)
-                 (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets)))))
-  (setf (fill-pointer *inbound-packet-buffer*) 0)
+                 (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets))))))
   ;; Remove timed out connections
   (do-hash-table (client-origin client-connection *client-connections*)
     (when (< (client-connection-last-tick-received client-connection)

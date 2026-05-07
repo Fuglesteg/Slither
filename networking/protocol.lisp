@@ -161,9 +161,11 @@
     (:input
      (destructuring-bind (inputs) arguments
        (let ((encoded-inputs (encode-inputs inputs)))
-         (with-vector-writer (make-octet-vector 3) (:write-integer packet-write-byte)
+         (with-vector-writer (make-octet-vector (+ 3 (length encoded-inputs))) (:write-integer packet-write-byte
+                                                                                :write-sequence packet-write-sequence)
            (packet-write-byte 5 :bytes 1)
-           (packet-write-byte encoded-inputs :bytes 2)))))
+           (packet-write-byte (length encoded-inputs) :bytes 2)
+           (packet-write-sequence encoded-inputs)))))
     (:owner
      (destructuring-bind (entity-ids) arguments
        (let ((packet-length (* (length entity-ids) 2)))
@@ -229,12 +231,14 @@
            entity)
           (+ packet-length 3))))
       (5
-       (let* ((input-integer (packet-read-bytes 2))
-              (inputs (decode-inputs input-integer)))
-         (values (list
-                  :input
-                  inputs)
-                 3)))
+       (let* ((packet-length (packet-read-bytes 2))
+              (encoded-inputs (packet-read-sequence packet-length)))
+         (multiple-value-bind (buttons analogues) (decode-inputs encoded-inputs)
+           (values (list
+                    :input
+                    buttons
+                    analogues)
+                   (+ packet-length 3)))))
       (6
        (let* ((packet-length (packet-read-bytes 2))
               (entity-ids (loop repeat (the integer (/ packet-length 2))
@@ -259,8 +263,9 @@
             header
             (loop for subpacket in subpackets
                   for i from 1
-                  for total-length = (length subpacket) then (+ total-length (length subpacket))
-                  until (< total-length +packet-max-size+)
+                  for total-length = (length subpacket) then (+ total-length
+                                                                (length subpacket))
+                  until (>= total-length +packet-max-size+)
                   finally (setf subpackets-used i)
                           (return (subseq subpackets 0 i))))
      subpackets-used)))

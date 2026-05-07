@@ -64,7 +64,8 @@
            #:screen-space-vertex-shader
            #:ui-array-texture-shader-program
            #:shader-program
-           :ui-color-shader-program))
+           :ui-color-shader-program
+           :screen-space-rotation-direction))
 
 (in-package #:slither/render)
 
@@ -285,8 +286,12 @@
 (defun screen-space-rotate (rotation)
   (rotation-lerp rotation
                  (radians->degrees (atan (mcref *view-matrix* 0 1)
-                          (mcref *view-matrix* 0 0)))
+                                         (mcref *view-matrix* 0 0)))
                  1.0))
+
+(defun screen-space-rotation-direction ()
+  (vec2 (mcref *view-matrix* 0 1)
+        (mcref *view-matrix* 0 0)))
 
 (-> draw-rectangle (vec2 vec2 vec4 &key
                          (:shader-program shader-program)

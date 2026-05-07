@@ -77,12 +77,16 @@
 
 (defgeneric entity-type-id (entity))
 
-(defmacro define-entity-accessor (entity slot-name)
+(defmacro define-entity-accessor (entity slot-name &key networked)
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name entity) (symbol-name slot-name)))))
   `(progn
      (defun ,accessor-symbol (&optional (entity *entity*))
        (slot-value entity ',slot-name))
      (defun (setf ,accessor-symbol) (new-value &optional (entity *entity*))
+       ,@(when networked
+           `((uiop:symbol-call :slither/networking/networked :networked-register-place-change
+                              (entity-find-behavior entity 'networked)
+                              ',slot-name)))
        (setf (slot-value entity ',slot-name) new-value)))))
 
 (defmacro define-entity-method (entity name method-arguments &body body)
@@ -193,22 +197,27 @@
            (defclass ,name (entity)
              ,clos-slots)
            ,@(loop for slot-symbol in slot-symbols
-                   collect `(define-entity-accessor ,name ,slot-symbol))
+                   collect `(define-entity-accessor ,name ,slot-symbol :networked ,(member slot-symbol networked-slots)))
            (defmethod entity-type-id ((entity ,name))
              ,entity-type-id)
            (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
              ,networked-slots)
-           ,@(let ((entity-and-behaviors-networked-slots
-                     (let ((result nil))
-                            (loop for networked-slot in networked-slots
-                                  do (push (list networked-slot
-                                                 nil)
-                                           result))
-                            (loop for behavior in networked-behavior-symbols
-                                  append (loop for networked-slot in (behavior-networked-slots behavior)
-                                               do (push (list networked-slot behavior)
-                                                        result)))
-                       result)))
+           ,@(let* ((behaviors-networked-slots-overrides
+                    (loop for networked-behavior-symbol in networked-behavior-symbols
+                          append (behavior-networked-slots-overrides networked-behavior-symbol)))
+                    (entity-and-behaviors-networked-slots
+                      (let ((result nil))
+                        (loop for networked-slot in networked-slots
+                              do (push (list networked-slot
+                                             nil)
+                                       result))
+                        (loop for behavior in networked-behavior-symbols
+                              append (loop for networked-slot in (behavior-networked-slots behavior)
+                                           do (unless (find (cons behavior networked-slot) behaviors-networked-slots-overrides
+                                                            :test 'equal)
+                                                (push (list networked-slot behavior)
+                                                    result))))
+                        result)))
                `((defmethod entity-find-networked-slot-symbol ((entity ,name) slot-id)
                    (ecase slot-id
                      ,@(loop for (networked-slot behavior) in entity-and-behaviors-networked-slots
