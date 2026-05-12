@@ -5,6 +5,20 @@ and GLFW.
 
 It includes a renderer with easy to use macros that abstract certain parts of OpenGL. Like `define-texture`, `define-array-texture`, `define-shader-program`, `draw-texture`, `draw-array-texture` etc.
 
-Currently you write game logic in entities and behaviors. A behavior is something that contains data and can be called by the engine every tick, including when it is initialized. An entity is something with a position in the game that can contain behaviors. Together with these abstractions you can compose game logic that can easily be reused. They are defined using the macros: `defentity` and `defbehavior`.
+Game logic is defined using entities and behaviors. A behavior is something that contains data and can be called by the engine every tick, including when it is initialized. An entity is used to compose and use behaviors, while it can also contain it's own logic. Together with these abstractions you can compose game logic that can easily be reused. They are defined using the macros: `defentity` and `defbehavior`.
 
-Currently entities and behaviors are implemented using CLOS, but it would be interesting to see if these could be implemented as something similar to ECS, such that a development build could use CLOS for easier debugging and better interactivity, while release builds could use ECS for performance.
+## Features
+
+- Built in behaviors for rapid prototyping
+    - Sprite
+    - Speaker & Listener
+    - Move & Camera
+    - etc...
+- Physics
+    - Simple 2D rigidbody physics
+    - Currently only supports circle colliders
+- Networking
+    - Authoritative server model
+    - Client prediction
+- Sound system based on [Harmony](https://shirakumo.org/projects/harmony)
+    - Location based sound
