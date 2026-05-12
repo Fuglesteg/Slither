@@ -197,11 +197,11 @@
            (defclass ,name (entity)
              ,clos-slots)
            ,@(loop for slot-symbol in slot-symbols
-                   collect `(define-entity-accessor ,name ,slot-symbol :networked ,(member slot-symbol networked-slots)))
+                   collect `(define-entity-accessor ,name ,slot-symbol :networked ,(not (not (member slot-symbol networked-slots)))))
            (defmethod entity-type-id ((entity ,name))
              ,entity-type-id)
            (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
-             ,networked-slots)
+             ',networked-slots)
            ,@(let* ((behaviors-networked-slots-overrides
                     (loop for networked-behavior-symbol in networked-behavior-symbols
                           append (behavior-networked-slots-overrides networked-behavior-symbol)))

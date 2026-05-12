@@ -85,19 +85,27 @@
                      :static
                      :owned))
      (last-tick-update :init 0)
+     (simulated-inputs)
      (updated-places :init '()))
   (:networked t)
   (:start
+   (setf (networked-simulated-inputs) (copy-inputs slither/input::*inputs*))
    (when (networked-objects)
      (add-networked *behavior*)))
   ;; TODO: Should this happen pre tick?
-  (:tick
+  (:fixed-tick
    (case (networked-mode)
      (:client-predicted
-      (let ((ticks-to-predict (- (current-tick) (networked-last-tick-update))))
+      (let ((ticks-to-predict (- (current-tick) (networked-last-tick-update) 1)))
         (when (< 0 ticks-to-predict)
-          (copy-inputs slither/input::*inputs*)
-          (setf (networked-last-tick-update) (current-tick)))))
+          (setf (networked-last-tick-update) (current-tick))
+          (dotimes (tick-count ticks-to-predict)
+            (let ((tick (+ (networked-last-tick-update) tick-count)))
+              (slither/input::input-history-apply (networked-simulated-inputs) tick)
+              (let ((slither/input::*inputs* (networked-simulated-inputs))
+                    (slither/core::*delta-time* (tick-delta))
+                    (slither/networking/networked::*networking-environment* :server))
+                (fixed-tick *entity*)))))))
       (:static)
       (:owned)))
   (:destroy

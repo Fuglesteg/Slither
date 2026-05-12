@@ -97,10 +97,10 @@ Intended to be used for client-side prediction."
                (connection-acknowledge-sent *server-connection*
                                             acknowledging-packet-id
                                             last-acknowledged-packets)
-               (when (> tick (current-tick))
+               (when (> tick (+ 30 (current-tick)))
                  (setf (current-tick) tick)
-                 (setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
-                 (slither/scenes::fixed-update-entities))
+                 #+nil(setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
+                 (slither/input::input-history-reset-to-tick tick))
                (let (failed-ownership-application)
                  (loop for (subpacket-type . subpacket) in subpackets
                        do (ecase subpacket-type

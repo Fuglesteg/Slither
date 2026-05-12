@@ -241,7 +241,8 @@
   (do-hash-table (key state *keys*)
     (case state
       (:released (setf (key-state key) nil))
-      (:pressed (setf (key-state key) :held)))))
+      (:pressed (setf (key-state key) :held))))
+  (input-history-tick))
 
 (defun register-vector-input (name &key up down left right polling-function)
   (register-input-vector-code name)
@@ -319,3 +320,58 @@
                                         (button-input (make-instance 'button-input :value (button-input-value input)))
                                         (vector-input (make-instance 'vector-input :value (vcopy (vector-input-value input)))))))
     copy))
+
+(defvar *input-history*
+  (make-hash-table :test 'eq
+                   :size 32))
+
+(defconstant +input-history-size+ 30)
+
+(defvar *input-history-last-tick* 0)
+
+(defun input-history-tick ()
+  (incf *input-history-last-tick*)
+  (do-hash-table (input-name input *inputs*)
+    (let ((input-history-vector (gethash input-name *input-history*)))
+      (unless input-history-vector
+        (setf input-history-vector
+              (make-array +input-history-size+))
+        (setf (gethash input-name *input-history*) input-history-vector))
+      (replace input-history-vector input-history-vector
+               :start1 1)
+      (setf (aref input-history-vector 0)
+            (etypecase input
+              (button-input (button-input-value input))
+              (vector-input (vector-input-value input)))))))
+
+(defun input-history-shift (amount)
+  (unless (= amount 0)
+    (do-hash-table (input-name input-history-vector *input-history*)
+      (declare (ignore input-name))
+      (when input-history-vector
+        (cond
+          ; Reset vector
+          ((< +input-history-size+ (abs amount))
+           (fill input-history-vector nil))
+          ; Shift to future
+          ((< 0 amount)
+            (replace input-history-vector input-history-vector
+                     :start1 amount))
+          ; Shift to past
+          (t
+            (replace input-history-vector input-history-vector
+                     :start2 (- amount))))))))
+
+(defun input-history-reset-to-tick (tick)
+  (input-history-shift (- tick *input-history-last-tick*))
+  (setf *input-history-last-tick* tick))
+
+(defun input-history-apply (inputs tick)
+  (let ((tick-index (- *input-history-last-tick* tick)))
+    (when (< 0 tick-index +input-history-size+)
+      (do-hash-table (input-name input inputs)
+        (let ((historic-value (aref (gethash input-name *input-history*)
+                                    tick-index)))
+          (etypecase input
+            (button-input (setf (button-input-value input) historic-value))
+            (vector-input (setf (vector-input-value input) historic-value))))))))
