@@ -89,19 +89,26 @@
            (type string text)
            (type number rotation)
            (type vec2 size))
-  (loop for char across text
-        for i from 0
-        do (unless (char= char #\Space)
-             (draw-array-texture (v+ position
-                                     (calculate-text-offset i :character-size size))
-                                 size
-                                 (char->font-index char)
-                                 font
-                                 :color (vec4 1.0 1.0 1.0 1.0)
-                                 :rotation rotation
-                                 :layer layer
-                                 :depth depth
-                                 :shader-program shader-program))))
+  (let* ((radians (degrees->radians rotation))
+         (cos-r (cos radians))
+         (sin-r (sin radians)))
+    (loop for char across text
+          for i from 0
+          do (unless (char= char #\Space)
+               (let* ((offset (calculate-text-offset i :character-size size))
+                      (rotated-offset (vec2 (- (* (vx offset) cos-r)
+                                               (* (vy offset) sin-r))
+                                            (+ (* (vx offset) sin-r)
+                                               (* (vy offset) cos-r)))))
+                 (draw-array-texture (v+ position rotated-offset)
+                                     size
+                                     (char->font-index char)
+                                     font
+                                     :color (vec4 1.0 1.0 1.0 1.0)
+                                     :rotation rotation
+                                     :layer layer
+                                     :depth depth
+                                     :shader-program shader-program))))))
 
 (defun calculate-text-offset (text-index &key (row-length 30) (character-size (vec2 0.02)))
   (with-vec (character-width character-height) character-size
