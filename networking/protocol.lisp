@@ -1,65 +1,3 @@
-;;;; PROTOCOL:
-;;;;
-;;;; ======HEADER======
-;;;; First byte determines protocol:
-;;;; 0 for unsynced normal UDP
-;;;; 1 for Reliable UDP (RUDP)
-;;;;
-;;;; 4 bytes for tick number
-;;;;
-;;;; 4 bytes for packet id of this packet
-;;;;
-;;;; RUDP specific:
-;;;;
-;;;; 4 bytes for "aknowledging packet-id"
-;;;; 4 bytes for last-aknowledged packets bitfield
-;;;;
-;;;; =======BODY=======
-;;;;
-;;;; Contains multiple subpackets up until the packet size limit 1200
-;;;;
-;;;; Packet types:
-;;;; 0 = connect: Request server to open connection
-;;;; 1 = disconnect: Request server to close connection
-;;;; 2 = update: Request client/server to update a value
-;;;; 3 = action: Request server to perform an action
-;;;; 4 = entity: Entity data to be spawned or updated
-;;;; 5 = input: Send inputs
-;;;; 6 = owner: Send ownership to client
-;;;;
-;;;; 0: Connect:
-;;;;   - String - Username
-;;;;
-;;;; 1: Disconnect:
-;;;;
-;;;; 2: Update:
-;;;;  - networked-object-id (uint32)
-;;;;  - place-id (uint32) - Id of update-place in networked-object
-;;;;  - new-value (t)
-;;;;
-;;;; 3: Action:
-;;;;  - networked-object-id (uint32)
-;;;;  - action-id (uint32) - Id of action in networked-object
-;;;;  - ...arguments (vector t) - Arguments to action
-;;;;
-;;;; 4: Spawn:
-;;;;  - networked-object-id (uint32)
-;;;;  - entity-type-id (uint32) - Id of entity type
-;;;;  - ...arguments (vector t) - Arguments to spawn-entity
-;;;;
-;;;; 5: Input:
-;;;;  - input bit flags
-;;;;
-;;;; ==TYPED ARGUMENTS==
-;;;;
-;;;; First byte determines type:
-;;;; 0 = uint32
-;;;; 1 = single-float
-;;;; 2 = vec2
-;;;; 3 = vec3
-;;;; 4 = vec4
-;;;; 5 = string (2 bytes for length, ...chars)
-
 (uiop:define-package :slither/networking/protocol
   (:use :cl
         :ieee-floats
@@ -67,9 +5,6 @@
         :slither/input
         :slither/core
         :slither/serialization)
-  (:import-from :serapeum
-                :octet-vector
-                :make-octet-vector)
   (:export :packet-parse-header
            :make-packet-header
            :make-subpacket
@@ -112,14 +47,13 @@
     (write-packet-bytes last-acknowledged-packets :bytes 4)))
 
 (defun make-subpacket (packet-type &rest arguments)
-  (case packet-type
+  (ecase packet-type
     (:connect
      (destructuring-bind (username) arguments
-       (with-vector-writer (make-octet-vector (+ 3 (length username))) (:write-integer packet-write-byte)
+       (with-vector-writer (make-octet-vector (+ 4 (length username))) (:write-integer packet-write-byte
+                                                                        :write-sequence packet-write-sequence)
          (packet-write-byte 0 :bytes 1)
-         (packet-write-byte (length username) :bytes 2)
-         (loop for char across username
-               do (packet-write-byte (char-code char) :bytes 1)))))
+         (packet-write-sequence (encode-argument username)))))
     (:disconnect
      (make-array 1
                  :element-type '(unsigned-byte 8)
@@ -180,18 +114,26 @@
      (destructuring-bind (networked-object-id) arguments
        (with-vector-writer (make-octet-vector 3) (:write-integer packet-write-byte)
          (packet-write-byte 7 :bytes 1)
-         (packet-write-byte networked-object-id :bytes 2))))))
+         (packet-write-byte networked-object-id :bytes 2))))
+    (:echo
+     (destructuring-bind (argument) arguments
+       (let ((encoded-argument (encode-argument argument)))
+         (with-vector-writer (make-octet-vector (+ 1 (length encoded-argument))) (:write-integer packet-write-integer
+                                                                                  :write-sequence packet-write-sequence)
+           (packet-write-integer 8 :bytes 1)
+           (packet-write-sequence encoded-argument)))))))
 
 (defun parse-subpacket (subpacket)
   (with-vector-reader subpacket (:read-integer packet-read-bytes
-                                 :read-sequence packet-read-sequence)
-    (case (packet-read-bytes 1)
+                                 :read-sequence packet-read-sequence
+                                 :read-argument packet-read-argument
+                                 :bytes-read packet-bytes-read)
+    (ecase (packet-read-bytes 1)
       (0
-       (let ((username-length (packet-read-bytes 2)))
-         (values
-          (list :connect
-                (map 'string #'code-char (packet-read-sequence username-length)))
-          (+ username-length 3))))
+       (values
+        (list :connect
+              (packet-read-argument))
+        (packet-bytes-read)))
       (1
        (values (list :disconnect)
                1))
@@ -251,7 +193,12 @@
        (values (list
                 :destroy
                 (packet-read-bytes 2))
-               3)))))
+               3))
+      (8
+       (values (list
+                :echo
+                (packet-read-argument))
+               (packet-bytes-read))))))
 
 (defconstant +packet-max-size+ 1200)
 
@@ -271,6 +218,7 @@
      subpackets-used)))
 
 (defun parse-packet (packet)
+  (declare (optimize (debug 3)))
   (multiple-value-bind (protocol
                         tick
                         packet-id

@@ -18,7 +18,7 @@
 (eval-always
   (defmacro with-vector-reader (vector reader-form &body body)
     (let ((index-symbol (gensym "INDEX")))
-      (destructuring-bind (&key read-integer read-sequence read-argument remaining-bytes) reader-form
+      (destructuring-bind (&key read-integer read-sequence read-argument remaining-bytes bytes-read) reader-form
         `(let ((,index-symbol 0))
            (flet (,@(when read-integer
                       `((,read-integer (bytes)
@@ -33,10 +33,14 @@
                                         (multiple-value-bind (argument bytes-read)
                                             (decode-argument (subseq ,vector ,index-symbol))
                                           (incf ,index-symbol bytes-read)
-                                          argument))))
+                                          (values argument
+                                                  bytes-read)))))
                   ,@(when remaining-bytes
                       `((,remaining-bytes ()
-                                          (- (length ,vector) ,index-symbol)))))
+                                          (- (length ,vector) ,index-symbol))))
+                  ,@(when bytes-read
+                      `((,bytes-read ()
+                                     ,index-symbol))))
              ,@body)))))
 
   (defmacro with-vector-writer (vector writer-form &body body)
@@ -61,8 +65,9 @@
   (apply #'concatenate '(vector (unsigned-byte 8))
          (mapcar #'encode-argument arguments)))
 
-(declaim (ftype (function ((or integer single-float vec2 vec3 vec4 string)) (vector (unsigned-byte 8)))
-                encode-argument))
+(-> encode-argument ((or integer single-float double-float
+                         vec2 vec3 vec4 string))
+    (vector (unsigned-byte 8)))
 (defun encode-argument (argument)
   (etypecase argument
     (integer (concatenate '(vector (unsigned-byte 8))
@@ -71,22 +76,26 @@
     (single-float (concatenate '(vector (unsigned-byte 8))
                                #(1)
                                (integer->byte-array (encode-float32 argument))))
+    (double-float (concatenate '(vector (unsigned-byte 8))
+                               #(2)
+                               (integer->byte-array (encode-float64 argument) :bytes 8)))
     (vec2 (concatenate '(vector (unsigned-byte 8))
-                       #(2)
+                       #(3)
                        (integer->byte-array (encode-float32 (vx argument)))
                        (integer->byte-array (encode-float32 (vy argument)))))
     (vec3 (concatenate '(vector (unsigned-byte 8))
-                       #(3)
+                       #(4)
                        (integer->byte-array (encode-float32 (vx argument)))
                        (integer->byte-array (encode-float32 (vy argument)))
                        (integer->byte-array (encode-float32 (vz argument)))))
     (vec4 (concatenate '(vector (unsigned-byte 8))
-                       #(4)
+                       #(5)
                        (integer->byte-array (encode-float32 (vx argument)))
                        (integer->byte-array (encode-float32 (vy argument)))
                        (integer->byte-array (encode-float32 (vz argument)))
                        (integer->byte-array (encode-float32 (vw argument)))))
-    (string (with-vector-writer (make-octet-vector (+ 2 (length argument))) (:write-integer argument-write-byte)
+    (string (with-vector-writer (make-octet-vector (+ 3 (length argument))) (:write-integer argument-write-byte)
+              (argument-write-byte 6 :bytes 1)
               (argument-write-byte (length argument) :bytes 2)
               (loop for char across argument
                     do (argument-write-byte (char-code char) :bytes 1))))))
@@ -100,8 +109,8 @@
                (push parsed-argument parsed)))
     (nreverse parsed)))
 
-(declaim (ftype (function ((vector (unsigned-byte 8))) (values t integer))
-                decode-argument))
+(-> decode-argument ((vector (unsigned-byte 8)))
+    (values t integer))
 (defun decode-argument (argument-vector)
   (declare (type (vector (unsigned-byte 8)) argument-vector))
   (let ((bytes-read 0))
@@ -113,30 +122,31 @@
               (case (read-integer)
                 (0 (read-integer :bytes 4))
                 (1 (decode-float32 (read-integer :bytes 4)))
-                (2 (vec2 (decode-float32 (read-integer :bytes 4))
+                (2 (decode-float64 (read-integer :bytes 8)))
+                (3 (vec2 (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))))
-                (3 (vec3 (decode-float32 (read-integer :bytes 4))
+                (4 (vec3 (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))))
-                (4 (vec4 (decode-float32 (read-integer :bytes 4))
+                (5 (vec4 (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))
                          (decode-float32 (read-integer :bytes 4))))
-                (5 (let ((string-length (read-integer :bytes 2)))
+                (6 (let ((string-length (read-integer :bytes 2)))
                      (incf bytes-read string-length)
-                     (map 'string #'code-char (subseq argument-vector 2 string-length)))))))
+                     (map 'string #'code-char (subseq argument-vector 0 string-length)))))))
         (values parsed-argument
                 bytes-read)))))
 
-(declaim (ftype (function ((vector (unsigned-byte 8)) &key (:bytes integer)) integer)
-                vector-read-integer))
+(-> vector-read-integer ((vector (unsigned-byte 8)) &key (:bytes integer))
+    integer)
 (defun vector-read-integer (vector &key (bytes 1))
   "Read the amount of bytes from vector as one integer"
   (apply #'logior (loop for byte from 0 below bytes
                         collect (ash (aref vector byte) (* byte 8)))))
 
-(declaim (ftype (function (integer &key (:bytes integer)) (vector (unsigned-byte 8)))
-                integer->byte-array))
+(-> integer->byte-array (integer &key (:bytes integer))
+    (vector (unsigned-byte 8)))
 (defun integer->byte-array (integer &key (bytes 4))
   (make-array bytes
               :element-type '(unsigned-byte 8)

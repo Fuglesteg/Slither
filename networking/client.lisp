@@ -7,6 +7,7 @@
         :slither/networking/networked
         :slither/networking/socket
         :slither/networking/connection)
+  (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:import-from :serapeum
                 :octet-vector)
   (:export
@@ -78,9 +79,19 @@
 Intended to be used for client-side prediction."
   *input-buffer*)
 
+(defun send-timestamp ()
+  (connection-add-subpacket *server-connection*
+                            (make-subpacket :echo
+                                            (glfw:time))))
+
+(defvar *round-trip-time*
+  0.0d0
+  "RTT measures how long a packet takes to reach the server and return to the client")
+
 (-> flush-server-connection () ())
 (defun flush-server-connection ()
   (send-inputs slither/input::*inputs*)
+  (send-timestamp)
   (connection-flush *server-connection*)
   (let ((inbound-packet-buffer (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))))
     (setf (fill-pointer *inbound-packet-buffer*) 0)
@@ -98,7 +109,7 @@ Intended to be used for client-side prediction."
                                             acknowledging-packet-id
                                             last-acknowledged-packets)
                (when (> tick (+ 30 (current-tick)))
-                 (setf (current-tick) tick)
+                 #+nil(setf (current-tick) tick)
                  #+nil(setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
                  (slither/input::input-history-reset-to-tick tick))
                (let (failed-ownership-application)
@@ -132,7 +143,10 @@ Intended to be used for client-side prediction."
                             (:destroy
                              (destructuring-bind (networked-object-id) subpacket
                                (when-let ((networked (find-networked networked-object-id)))
-                                 (remove-entity (behavior-entity networked)))))))
+                                 (remove-entity (behavior-entity networked)))))
+                            (:echo
+                             (destructuring-bind (time) subpacket
+                               (incf *round-trip-time* (* (- (glfw:time) time *round-trip-time*) 0.1))))))
                  (dolist (entity-id failed-ownership-application)
                    (alexandria:when-let ((networked (find-networked entity-id)))
                      (setf (networked-mode networked)

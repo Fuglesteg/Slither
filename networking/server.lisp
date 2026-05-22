@@ -337,7 +337,10 @@
                             (:destroy (destructuring-bind (networked-object-id) subpacket
                                         (remove-entity
                                          (behavior-entity
-                                          (find-networked networked-object-id))))))
+                                          (find-networked networked-object-id)))))
+                            (:echo (destructuring-bind (argument) subpacket
+                                     (when connection
+                                     (connection-add-subpacket connection (make-subpacket :echo argument))))))
                           (skip-packet ()
                             :report "Skip the current packet"
                             t)))

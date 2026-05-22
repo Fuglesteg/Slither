@@ -85,21 +85,30 @@
                      :static
                      :owned))
      (last-tick-update :init 0)
+     (tick-offset :init 0)
+     (ticks-since-same-offset :init 0)
      (simulated-inputs)
-     (updated-places :init '()))
+     (updated-places :init (progn nil)))
   (:networked t)
   (:start
    (setf (networked-simulated-inputs) (copy-inputs slither/input::*inputs*))
    (when (networked-objects)
      (add-networked *behavior*)))
-  ;; TODO: Should this happen pre tick?
-  (:fixed-tick
+  (:pre-fixed-tick
    (case (networked-mode)
      (:client-predicted
-      (let ((ticks-to-predict (- (current-tick) (networked-last-tick-update) 1)))
-        (when (< 0 ticks-to-predict)
+      (let ((ticks-behind (- (current-tick) (networked-last-tick-update) 1)))
+        (if (< (- (* (networked-tick-offset) 0.5) 5)
+               ticks-behind
+               (+ 5 (* (networked-tick-offset) 1.5)))
+            (setf (networked-ticks-since-same-offset) 0)
+            (incf (networked-ticks-since-same-offset)))
+        (unless (< -60 (networked-ticks-since-same-offset) 60)
+          (progn (setf (networked-ticks-since-same-offset) 0)
+                 (setf (networked-tick-offset) ticks-behind)))
+        (when (< 0 (networked-tick-offset))
           (setf (networked-last-tick-update) (current-tick))
-          (dotimes (tick-count ticks-to-predict)
+          (dotimes (tick-count (networked-tick-offset))
             (let ((tick (+ (networked-last-tick-update) tick-count)))
               (slither/input::input-history-apply (networked-simulated-inputs) tick)
               (let ((slither/input::*inputs* (networked-simulated-inputs))
@@ -127,6 +136,7 @@
 (defun networked-get-updated-places (networked)
   (prog1
       (loop for updated-place in (networked-updated-places networked)
+            unless (null updated-place)
             collect (multiple-value-bind (place-symbol behavior-symbol)
                         (entity-find-networked-slot-symbol (behavior-entity networked) updated-place)
                       (cons place-symbol behavior-symbol)))
