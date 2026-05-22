@@ -65,7 +65,8 @@
            #:ui-array-texture-shader-program
            #:shader-program
            :ui-color-shader-program
-           :screen-space-rotation-direction))
+           :screen-space-rotation-direction
+           :screen-space-rotation))
 
 (in-package #:slither/render)
 
@@ -145,7 +146,7 @@
           sine cosine 0
           0 0 1)))
 
-(defvar *view-matrix* nil)
+(defvar *view-matrix* (mat3))
 (defvar *camera-zoom* 1.0)
 (defun set-camera-position (position &key
                                      (zoom 1.0)
@@ -290,8 +291,12 @@
                  1.0))
 
 (defun screen-space-rotation-direction ()
-  (vec2 (mcref *view-matrix* 0 1)
-        (mcref *view-matrix* 0 0)))
+  (safe-vscale (vec2 (mcref *view-matrix* 0 1)
+                     (mcref *view-matrix* 0 0))
+               1.0))
+
+(defun screen-space-rotation ()
+  (vec2->rotation (screen-space-rotation-direction)))
 
 (-> draw-rectangle (vec2 vec2 vec4 &key
                          (:shader-program shader-program)
