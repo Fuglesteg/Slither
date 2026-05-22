@@ -14,8 +14,28 @@
   (declare (special *behavior*))
   (call-next-method))
 
+(defmethod pre-tick ((behavior behavior)))
+(defmethod pre-tick :around ((*behavior* behavior))
+  (declare (special *behavior*))
+  (call-next-method))
+
+(defmethod post-tick ((behavior behavior)))
+(defmethod post-tick :around ((*behavior* behavior))
+  (declare (special *behavior*))
+  (call-next-method))
+
 (defmethod fixed-tick ((behavior behavior)))
 (defmethod fixed-tick :around ((behavior behavior))
+  (let ((*behavior* behavior))
+    (call-next-method)))
+
+(defmethod pre-fixed-tick ((behavior behavior)))
+(defmethod pre-fixed-tick :around ((behavior behavior))
+  (let ((*behavior* behavior))
+    (call-next-method)))
+
+(defmethod post-fixed-tick ((behavior behavior)))
+(defmethod post-fixed-tick :around ((behavior behavior))
   (let ((*behavior* behavior))
     (call-next-method)))
 
@@ -38,13 +58,13 @@
                 `(funcall reader ,accessor-form)
                 accessor-form))
        (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior* *entity*)))
-         (declare (optimize (debug 3)))
          ,@(when networked
              `((let ((networked (etypecase behavior
                                   (entity (entity-find-behavior behavior (uiop:find-symbol* :networked :slither/networking/networked)))
                                   (,behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked)))
                                   (behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked))))))
-                 (uiop:symbol-call :slither/networking/networked :networked-register-place-change networked ',slot-name ',behavior))))
+                 (when networked
+                   (uiop:symbol-call :slither/networking/networked :networked-register-place-change networked ',slot-name ',behavior)))))
          (setf ,accessor-form ,(if writer
                                    `(funcall ,writer new-value)
                                    'new-value))))))
@@ -120,9 +140,29 @@
                  `(defmethod tick ((,(gensym) ,name))
                     ,@arguments)
                  methods))
+               ((string= keyword-or-symbol :pre-tick)
+                (push
+                 `(defmethod pre-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :post-tick)
+                (push
+                 `(defmethod post-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
                ((string= keyword-or-symbol :fixed-tick)
                 (push
                  `(defmethod fixed-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :pre-fixed-tick)
+                (push
+                 `(defmethod pre-fixed-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :post-fixed-tick)
+                (push
+                 `(defmethod post-fixed-tick ((,(gensym) ,name))
                     ,@arguments)
                  methods))
                ((string= keyword-or-symbol :start)

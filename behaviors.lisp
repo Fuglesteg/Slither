@@ -5,6 +5,7 @@
         #:slither/utils
         #:slither/core
         #:slither/render
+        #:slither/networking
         #:slither/networking/networked)
   (:import-from #:slither/input
                 #:key-held-p)
@@ -26,7 +27,8 @@
            #:transform-position
            #:transform-size
            #:transform-rotation
-           #:transform-distance))
+           #:transform-distance
+           #:transform-smoothing))
 
 (in-package #:slither/behaviors)
 
@@ -45,6 +47,44 @@
 (defmethod transform-distance ((transform1 transform) (transform2 transform))
   (vdistance (transform-position transform1)
              (transform-position transform2)))
+
+(defbehavior transform-smoothing
+    ((position :init (vec2))
+     (previous-position :init (vec2))
+     (size :init (vec2))
+     (previous-size :init (vec2))
+     (rotation :init 0.0)
+     (previous-rotation :init 0.0))
+  (:required-behaviors transform)
+  (:start
+   (setf (transform-smoothing-previous-position) (transform-position))
+   (setf (transform-smoothing-previous-size) (transform-size))
+   (setf (transform-smoothing-previous-rotation) (transform-rotation))
+   (setf (transform-smoothing-position) (transform-position))
+   (setf (transform-smoothing-size) (transform-size))
+   (setf (transform-smoothing-rotation) (transform-rotation)))
+  (:pre-fixed-tick
+   (setf (transform-smoothing-previous-position) (transform-position))
+   (setf (transform-smoothing-previous-size) (transform-size))
+   (setf (transform-smoothing-previous-rotation) (transform-rotation)))
+  (:post-fixed-tick
+   (setf (transform-smoothing-position) (transform-position))
+   (setf (transform-smoothing-size) (transform-size))
+   (setf (transform-smoothing-rotation) (transform-rotation)))
+  (:tick
+   (when (clientp)
+     (setf (transform-position)
+           (vlerp (transform-smoothing-previous-position)
+                  (transform-smoothing-position)
+                  (interpolation-alpha)))
+     (setf (transform-rotation)
+           (rotation-lerp (transform-smoothing-previous-rotation)
+                          (transform-smoothing-rotation)
+                          (interpolation-alpha)))
+     (setf (transform-size)
+           (vlerp (transform-smoothing-previous-size)
+                  (transform-smoothing-size)
+                  (interpolation-alpha))))))
 
 (defun move (offset)
   (nv+ (transform-position) offset))

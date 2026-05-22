@@ -78,9 +78,7 @@
                :networked t)
      (position :init (vec2)
                :networked t
-               :networked-overrides ((transform position)))
-     (previous-position :init (vec2)
-                        :networked t))
+               :networked-overrides ((transform position))))
   (:networked t)
   (:required-behaviors
    transform)
@@ -88,17 +86,9 @@
    (when-let ((collider (entity-find-behavior *entity* 'circle-collider)))
      (setf (rigidbody-colliders)
            (list collider)))
-   (setf (rigidbody-position) (transform-position))
-   (setf (rigidbody-previous-position) (transform-position)))
-  (:tick
-   (setf (transform-position)
-         (vlerp (rigidbody-previous-position)
-                (rigidbody-position)
-                (interpolation-alpha))))
+   (setf (rigidbody-position) (transform-position)))
   (:fixed-tick
    (when (slither/networking:networked-simulate-p)
-   (setf (rigidbody-previous-position)
-         (rigidbody-position))
    ;; Drag
    (vdecf (rigidbody-velocity)
           (v* (rigidbody-velocity)
@@ -207,8 +197,9 @@
                                      (setf (rigidbody-velocity foreign-rigidbody)
                                            (v+ (rigidbody-velocity foreign-rigidbody)
                                                (v* friction-impulse foreign-inverse-mass)))))))))))))
-   ;; Update position
-   (setf (rigidbody-position)
-         (v+ (rigidbody-position) (rigidbody-velocity)))))
+     ;; Update position
+     (setf (rigidbody-position)
+           (v+ (rigidbody-position) (rigidbody-velocity)))
+     (setf (transform-position) (rigidbody-position))))
   (:rigidbody-velocity+ (force)
    (setf (rigidbody-velocity) (nv+ (rigidbody-velocity) force))))

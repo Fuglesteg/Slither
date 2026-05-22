@@ -94,8 +94,6 @@
   (setf (mouse-scroll-x) xoffset)
   (setf (mouse-scroll-y) yoffset))
 
-
-
 (defparameter *mouse-position* (vec2 0 0))
 
 (defun set-mouse-position (x y)
