@@ -6,6 +6,7 @@
         :slither/scenes
         :slither/input
         :slither/networking/protocol
+        :slither/networking/client-prediction
         :slither/networking/connection)
   (:export :networked-objects
            :find-networked
@@ -85,9 +86,8 @@
                      :static
                      :owned))
      (last-tick-update :init 0)
-     (tick-offset :init 0)
-     (ticks-since-same-offset :init 0)
      (simulated-inputs)
+     (prediction-active :init (progn nil))
      (updated-places :init (progn nil)))
   (:networked t)
   (:start
@@ -97,24 +97,16 @@
   (:pre-fixed-tick
    (case (networked-mode)
      (:client-predicted
-      (let ((ticks-behind (- (current-tick) (networked-last-tick-update) 1)))
-        (if (< (- (* (networked-tick-offset) 0.5) 5)
-               ticks-behind
-               (+ 5 (* (networked-tick-offset) 1.5)))
-            (setf (networked-ticks-since-same-offset) 0)
-            (incf (networked-ticks-since-same-offset)))
-        (unless (< -60 (networked-ticks-since-same-offset) 60)
-          (progn (setf (networked-ticks-since-same-offset) 0)
-                 (setf (networked-tick-offset) ticks-behind)))
-        (when (< 0 (networked-tick-offset))
-          (setf (networked-last-tick-update) (current-tick))
-          (dotimes (tick-count (networked-tick-offset))
-            (let ((tick (+ (networked-last-tick-update) tick-count)))
-              (slither/input::input-history-apply (networked-simulated-inputs) tick)
-              (let ((slither/input::*inputs* (networked-simulated-inputs))
-                    (slither/core::*delta-time* (tick-delta))
-                    (slither/networking/networked::*networking-environment* :server))
-                (fixed-tick *entity*)))))))
+      (unless (networked-prediction-active) ; Avoid recursion
+        (setf (networked-prediction-active) t)
+        (dotimes (tick-count (1- (ticks-to-predict)))
+          (let ((tick (+ (networked-last-tick-update) tick-count)))
+            (slither/input::input-history-apply (networked-simulated-inputs) tick)
+            (let ((slither/input::*inputs* (networked-simulated-inputs))
+                  (slither/core::*delta-time* (tick-delta))
+                  (slither/networking/networked::*networking-environment* :server))
+              (fixed-tick *entity*))))
+        (setf (networked-prediction-active) nil)))
       (:static)
       (:owned)))
   (:destroy

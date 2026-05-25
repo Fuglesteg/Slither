@@ -217,14 +217,15 @@
      (size :init (vec2 0.01))
      (text :init "Button")
      (on-click :init (lambda (behavior))))
-  (:tick
+  (:fixed-tick
    (when (and (mouse-hover-p (button-position)
                              (v* (ui-calculate-text-offset (length (button-text))
                                                            :character-size (button-size))
                                  (vec2 0.5 1))
                              :anchor :bottom-left)
               (key-pressed-p :left-click))
-     (funcall (button-on-click) *behavior*))
+     (funcall (button-on-click) *behavior*)))
+  (:tick
    (ui-draw-button (button-text)
                    (button-position)
                    :character-size (button-size))))
@@ -254,7 +255,7 @@
      (text :init "")
      (max-length :init 20)
      (focus :init nil))
-  (:tick
+  (:fixed-tick
    (when (key-pressed-p :left-click)
      (if (mouse-hover-p (text-input-position)
                         (text-input-size)
@@ -284,13 +285,14 @@
          (register-input-char :3 #\3) (register-input-char :4 #\4) (register-input-char :5 #\5)
          (register-input-char :6 #\6) (register-input-char :7 #\7) (register-input-char :8 #\8)
          (register-input-char :9 #\9) (register-input-char :! #\!) (register-input-char :? #\?)
-         (register-input-char :. #\.) (register-input-char '|:,| #\,)))
+         (register-input-char :period #\.) (register-input-char :comma #\,) (register-input-char :colon #\:)))
      (when (key-pressed-p :backspace)
        (when (< 0 (length (text-input-text)))
          (setf (text-input-text)
                (subseq (text-input-text)
                        0
-                       (1- (length (text-input-text))))))))
+                       (1- (length (text-input-text)))))))))
+  (:tick
    (ui-draw-text-input (text-input-text)
                        (text-input-position)
                        :size (text-input-size)

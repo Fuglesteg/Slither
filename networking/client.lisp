@@ -4,6 +4,7 @@
         :slither/core
         :slither/scenes
         :slither/networking/protocol
+        :slither/networking/client-prediction
         :slither/networking/networked
         :slither/networking/socket
         :slither/networking/connection)
@@ -22,11 +23,28 @@
 
 (defvar *server-connection*)
 
-(defun connect-to-server (address &optional (username "Solan Gundersen"))
+(defconstant +default-port+ 7878)
+
+(defun host-address (host)
+  (let* ((port-separator-position (position #\: host))
+         (domain (if port-separator-position
+                     (subseq host 0 port-separator-position)
+                     host))
+         (port (if port-separator-position
+                   (parse-integer (subseq host port-separator-position))
+                   +default-port+)))
+         (multiple-value-bind (ipv4-entry ipv6-entry)
+             (sb-bsd-sockets:get-host-by-name domain)
+           (list
+            (or (sb-bsd-sockets:host-ent-address ipv4-entry)
+                (sb-bsd-sockets:host-ent-address ipv6-entry))
+            port))))
+
+(defun connect-to-server (host &optional (username "Solan Gundersen"))
   (socket-open)
   (setf *server-connection*
         (make-instance 'server-connection
-                       :remote address))
+                       :remote (host-address host)))
   (connection-add-subpacket *server-connection* (make-subpacket :connect username)))
 
 (defparameter *inbound-packet-buffer* (make-array 1000
@@ -35,6 +53,7 @@
                                                   :element-type 'octet-vector))
 
 (defun run-server-connection (address &optional username)
+  (declare (ignore address username))
   (unwind-protect
        (loop
          (vector-push (socket-receive)
@@ -84,10 +103,6 @@ Intended to be used for client-side prediction."
                             (make-subpacket :echo
                                             (glfw:time))))
 
-(defvar *round-trip-time*
-  0.0d0
-  "RTT measures how long a packet takes to reach the server and return to the client")
-
 (-> flush-server-connection () ())
 (defun flush-server-connection ()
   (send-inputs slither/input::*inputs*)
@@ -108,13 +123,17 @@ Intended to be used for client-side prediction."
                (connection-acknowledge-sent *server-connection*
                                             acknowledging-packet-id
                                             last-acknowledged-packets)
-               (when (> tick (+ 30 (current-tick)))
-                 #+nil(setf (current-tick) tick)
-                 #+nil(setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
-                 (slither/input::input-history-reset-to-tick tick))
+               (when (> tick (server-tick))
+                 (setf (server-tick) tick))
+               #+nil(when (> tick (current-tick))
+                      (setf (current-tick) tick)
+                      (setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
+                      (slither/input::input-history-reset-to-tick tick))
                (let (failed-ownership-application)
                  (loop for (subpacket-type . subpacket) in subpackets
                        do (ecase subpacket-type
+                            (:connect
+                             (setf (current-tick) (+ tick (estimated-tick-offset))))
                             (:update
                              (destructuring-bind (networked-object-id place-id new-value) subpacket
                                (when-let ((networked-object (find-networked networked-object-id)))
@@ -123,12 +142,7 @@ Intended to be used for client-side prediction."
                                                            place-id
                                                            new-value)
                                    (setf (networked-last-tick-update networked-object) tick)))))
-                            (:action
-                             #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
-                                    (apply #'networked-apply-action
-                                           (find-networked networked-object-id)
-                                           action-id
-                                           arguments)))
+                            (:action)
                             (:entity
                              (destructuring-bind (entity-type-id entity) subpacket
                                (declare (ignore entity-type-id))
@@ -146,11 +160,13 @@ Intended to be used for client-side prediction."
                                  (remove-entity (behavior-entity networked)))))
                             (:echo
                              (destructuring-bind (time) subpacket
-                               (incf *round-trip-time* (* (- (glfw:time) time *round-trip-time*) 0.1))))))
+                               (register-round-trip-time time)))))
                  (dolist (entity-id failed-ownership-application)
                    (alexandria:when-let ((networked (find-networked entity-id)))
                      (setf (networked-mode networked)
                            :client-predicted)))))))
+  ;; Control tick rate to nudge the predicted ticks to match the estimated offset
+  (client-prediction-tick-rate-flush)
   ;; Shift input buffer so that only the inputs from the last acknowledged packet to the current packet are available
   (input-buffer-add slither/input::*inputs*)
   (setf (fill-pointer *input-buffer*)

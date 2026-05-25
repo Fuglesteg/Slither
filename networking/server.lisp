@@ -39,7 +39,8 @@
     :accessor user-name
     :type string)))
 
-(defconstant +tick-buffer-size+ 30)
+(defconstant +max-future-tick-amount+ 10)
+(defconstant +max-late-tick-amount+ 5)
 
 (defclass client-connection (connection)
   ((user
@@ -58,7 +59,8 @@
     :initform (slither/input:copy-inputs slither/input::*inputs*)
     :reader client-connection-inputs)
    (inputs-buffer
-    :initform (make-array +tick-buffer-size+
+    :initform (make-array (+ +max-future-tick-amount+
+                             +max-late-tick-amount+)
                           :initial-element nil)
     :accessor client-connection-inputs-buffer)))
 
@@ -76,30 +78,23 @@
 (defun client-inputs-reset ()
   (do-hash-table (remote client *client-connections*)
     (declare (ignore remote))
-    (do-each (inputs (client-connection-inputs-buffer client))
-      (unless (null inputs)
-        (setf inputs :processed)))))
+    (let ((buffer (client-connection-inputs-buffer client)))
+      (dotimes (i (length buffer))
+        (when (aref buffer i)
+          (setf (aref buffer i) :processed))))))
 
 (defun client-inputs-add (client tick inputs)
-  (let ((index (- (current-tick) tick)))
-    (when (< index +tick-buffer-size+)
-      (setf (aref (client-connection-inputs-buffer client)
-                  index)
-            inputs))))
-
-#+server-reconciliation
-(defun client-inputs (client tick)
-  (let ((index (- (current-tick) tick)))
-    (when (< index +tick-buffer-size+)
-      (gethash client (aref *client-inputs* index)))))
+  (let ((index (+ (- tick (current-tick)) +max-future-tick-amount+)))
+    (if (< -1 index (+ +max-future-tick-amount+ +max-late-tick-amount+))
+        (setf (aref (client-connection-inputs-buffer client) index) inputs)
+        (format t "Missed input by ~a~%" index))))
 
 (defun client-inputs-shift ()
   (do-hash-table (remote client *client-connections*)
     (declare (ignore remote))
     (with-accessors ((inputs client-connection-inputs-buffer)) client
-      (setf (aref inputs 0) nil)
-      (replace inputs inputs
-               :start1 1))))
+      (replace inputs inputs :start1 1)
+      (setf (aref inputs 0) nil))))
 
 (defclass inbound-packet ()
   ((origin
@@ -194,55 +189,54 @@
   (setf (on-remove-networked)
         (lambda (networked)
           (send-destroy-entity (behavior-entity networked))))
-  (let ((tick-delta (/ 1.0 60.0))
-        (accumulator 0.0)
-        (last-time (glfw:time))
+  (let ((last-time (glfw:time))
         (tick 0))
     (loop
-      (let ((wake-time (+ last-time tick-delta)))
-        (sleep (max 0 (- (- wake-time (glfw:time)) 0.002))) ; sleep most of it
+      (let ((wake-time (+ last-time (tick-delta))))
+        (sleep (max 0 (- (- wake-time (glfw:time)) 0.002)))
         (loop until (>= (glfw:time) wake-time))
-
-      (let* ((current-time (glfw:time))
-             (frame-time (- current-time last-time)))
         (setf last-time wake-time)
-        (incf accumulator frame-time)
-
+        (incf tick)
         ;; Process all accumulated ticks
-        (loop while (>= accumulator tick-delta)
-              do (incf tick)
-                 (decf accumulator tick-delta)
-                 (let ((slither/core::*tick* tick)
-                       (slither/core::*delta-time* tick-delta))
-                   #+micros (slither/window::read-repl)
-                   (flush-server)
-                   (loop for entity in (scene-entities (current-scene))
-                         do (let ((client-connection
-                                    (entity-client-connection entity)))
-                              (if client-connection
-                                  (loop for input across (client-connection-inputs-buffer client-connection)
-                                        do (unless (or (null input)
-                                                       (eq input :processed))
-                                             (if (eq input :empty)
-                                                 (progn (tick entity)
-                                                        (fixed-tick entity))
-                                                 (destructuring-bind (buttons . analogues) input
-                                                   (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
-                                                     (slither/input::apply-decoded-inputs buttons analogues)
-                                                     (tick entity)
-                                                     (fixed-tick entity)
-                                                     (do-hash-table (input-name input slither/input::*inputs*)
-                                                       (declare (ignore input-name))
-                                                       (typecase input
-                                                         (slither/input::button-input
-                                                          (case (slither/input::button-input-value input)
-                                                            (:released (setf (slither/input::button-input-value input) nil))
-                                                            (:pressed (setf (slither/input::button-input-value input) :held)))))))))))
-                                  (progn
-                                    (tick entity)
-                                    (fixed-tick entity)))))
-                   (client-inputs-reset)
-                   (client-inputs-shift))))))))
+        (let ((slither/core::*tick* tick)
+              (slither/core::*delta-time* (tick-delta)))
+          #+micros (slither/window::read-repl)
+          (flush-server)
+          (loop for entity in (scene-entities (current-scene))
+                do (let ((client-connection
+                           (entity-client-connection entity)))
+                     (cond
+                       (client-connection
+                         (loop for input across (client-connection-inputs-buffer client-connection)
+                               do (unless (or (null input)
+                                              (eq input :processed))
+                                    (if (eq input :empty)
+                                        (progn (tick entity)
+                                               (fixed-tick entity))
+                                        (destructuring-bind (buttons . analogues) input
+                                          (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
+                                            (slither/input::apply-decoded-inputs buttons analogues)
+                                            (tick entity)
+                                            (fixed-tick entity)
+                                            (do-hash-table (input-name input slither/input::*inputs*)
+                                              (declare (ignore input-name))
+                                              (typecase input
+                                                (slither/input::button-input
+                                                 (case (slither/input::button-input-value input)
+                                                   (:released (setf (slither/input::button-input-value input) nil))
+                                                   (:pressed (setf (slither/input::button-input-value input) :held)))))))))))
+                         ;; Simulate if a null tick exited the window of accepted inputs
+                         (unless (aref (client-connection-inputs-buffer client-connection)
+                                       (1- (length (client-connection-inputs-buffer client-connection))))
+                           (format t "Missed inputs for tick~a~%" (current-tick))
+                           (finish-output)
+                           (tick entity)
+                           (fixed-tick entity)))
+                       (t
+                        (tick entity)
+                        (fixed-tick entity)))))
+          (client-inputs-reset)
+          (client-inputs-shift))))))
 
 (defun init-server ()
   (sb-thread:make-thread #'run-server
@@ -299,6 +293,8 @@
                                                       collect (make-subpacket :entity
                                                                               key
                                                                               (behavior-entity networked-object))))
+                                          (connection-add-subpacket connection
+                                                                    (make-subpacket :connect ""))
                                           (when *on-new-connection*
                                             (on-new-connection connection)))))
                             (:disconnect
@@ -319,21 +315,11 @@
                                         (if (and (null buttons)
                                                  (null analogues))
                                             (client-inputs-add connection
-                                                               (current-tick)
+                                                               tick
                                                                :empty)
-                                            (progn
-                                              #+nil(break "Buttons: ~a. ~% Analogues: ~a"
-                                                     buttons
-                                                     analogues)
-                                              (client-inputs-add connection
-                                                                 (current-tick)
-                                                                 (cons buttons analogues)))))
-                                      #+server-reconciliation
-                                      (client-inputs-add connection
-                                                         (current-tick)
-                                                         (destructuring-bind (inputs) subpacket
-                                                           (loop for input in inputs
-                                                                 collect (cons input :held))))))
+                                            (client-inputs-add connection
+                                                               tick
+                                                               (cons buttons analogues))))))
                             (:destroy (destructuring-bind (networked-object-id) subpacket
                                         (remove-entity
                                          (behavior-entity

@@ -1,5 +1,6 @@
 (defpackage #:slither/scenes
   (:use #:cl
+        #:slither/input
         #:slither/utils
         #:slither/core)
   (:export #:defscene
@@ -120,7 +121,8 @@
         do (incf (current-tick))
            (call-next-method)
            (let ((slither/core::*delta-time* (tick-delta)))
-             (fixed-update-entities))))
+             (fixed-update-entities)))
+  (input-poll))
 
 (defmethod fixed-tick ((scene scene)))
 

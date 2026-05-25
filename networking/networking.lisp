@@ -10,7 +10,9 @@
   (:export :start-server
            :serverp
            :start-network-client
-           :clientp))
+           :clientp
+           :client-prediction-tick-rate-flush
+           :ticks-to-predict))
 
 (in-package :slither/networking)
 

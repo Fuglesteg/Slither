@@ -28,7 +28,10 @@
            #:transform-size
            #:transform-rotation
            #:transform-distance
-           #:transform-smoothing))
+           #:render-transform
+           #:render-transform-position
+           #:render-transform-size
+           #:render-transform-rotation))
 
 (in-package #:slither/behaviors)
 
@@ -48,59 +51,76 @@
   (vdistance (transform-position transform1)
              (transform-position transform2)))
 
-(defbehavior transform-smoothing
-    ((position :init (vec2))
-     (previous-position :init (vec2))
-     (size :init (vec2))
-     (previous-size :init (vec2))
-     (rotation :init 0.0)
-     (previous-rotation :init 0.0))
-  (:required-behaviors transform)
-  (:start
-   (setf (transform-smoothing-previous-position) (transform-position))
-   (setf (transform-smoothing-previous-size) (transform-size))
-   (setf (transform-smoothing-previous-rotation) (transform-rotation))
-   (setf (transform-smoothing-position) (transform-position))
-   (setf (transform-smoothing-size) (transform-size))
-   (setf (transform-smoothing-rotation) (transform-rotation)))
-  (:pre-fixed-tick
-   (setf (transform-smoothing-previous-position) (transform-position))
-   (setf (transform-smoothing-previous-size) (transform-size))
-   (setf (transform-smoothing-previous-rotation) (transform-rotation)))
-  (:post-fixed-tick
-   (setf (transform-smoothing-position) (transform-position))
-   (setf (transform-smoothing-size) (transform-size))
-   (setf (transform-smoothing-rotation) (transform-rotation)))
-  (:tick
-   (when (clientp)
-     (setf (transform-position)
-           (vlerp (transform-smoothing-previous-position)
-                  (transform-smoothing-position)
-                  (interpolation-alpha)))
-     (setf (transform-rotation)
-           (rotation-lerp (transform-smoothing-previous-rotation)
-                          (transform-smoothing-rotation)
-                          (interpolation-alpha)))
-     (setf (transform-size)
-           (vlerp (transform-smoothing-previous-size)
-                  (transform-smoothing-size)
-                  (interpolation-alpha))))))
-
 (defun move (offset)
   (nv+ (transform-position) offset))
 
 (defun rotate (degrees)
   (incf (transform-rotation) degrees))
 
+(defbehavior render-transform
+    ((smoothed-position :init (vec2))
+     (previous-smoothed-position :init (vec2))
+     (position :init (vec2))
+     (smoothed-size :init (vec2))
+     (previous-smoothed-size :init (vec2))
+     (size :init (vec2))
+     (smoothed-rotation :init 0.0)
+     (previous-smoothed-rotation :init 0.0)
+     (rotation :init 0.0))
+  (:required-behaviors transform)
+  (:post-start
+   (setf (render-transform-smoothed-position) (transform-position))
+   (setf (render-transform-previous-smoothed-position) (transform-position))
+   (setf (render-transform-position) (transform-position))
+   (setf (render-transform-smoothed-size) (transform-size))
+   (setf (render-transform-previous-smoothed-size) (transform-size))
+   (setf (render-transform-size) (transform-size))
+   (setf (render-transform-smoothed-rotation) (transform-rotation))
+   (setf (render-transform-previous-smoothed-rotation) (transform-rotation))
+   (setf (render-transform-rotation) (transform-rotation)))
+  (:fixed-tick
+   (when (clientp)
+     (setf (render-transform-previous-smoothed-position) (render-transform-smoothed-position))
+     (setf (render-transform-previous-smoothed-size) (render-transform-smoothed-size))
+     (setf (render-transform-previous-smoothed-rotation) (render-transform-smoothed-rotation))
+     (setf (render-transform-smoothed-position)
+           (vlerp (render-transform-smoothed-position)
+                  (transform-position)
+                  0.2))
+     (setf (render-transform-smoothed-rotation)
+           (rotation-lerp (render-transform-smoothed-rotation)
+                          (transform-rotation)
+                          0.2))
+     (setf (render-transform-smoothed-size)
+           (vlerp (render-transform-smoothed-size)
+                  (transform-size)
+                  0.2))))
+  (:tick
+   (when (clientp)
+       (setf (render-transform-position)
+             (vlerp (render-transform-previous-smoothed-position)
+                    (render-transform-smoothed-position)
+                    (interpolation-alpha)))
+       (setf (render-transform-rotation)
+             (rotation-lerp (render-transform-previous-smoothed-rotation)
+                            (render-transform-smoothed-rotation)
+                            (interpolation-alpha)))
+       (setf (render-transform-size)
+             (vlerp (render-transform-previous-smoothed-size)
+                    (render-transform-smoothed-size)
+                    (interpolation-alpha))))))
+
 (defbehavior rectangle
     ((color :init (vec4 255 0 0 255))
      (depth :init 0))
   (:required-behaviors transform)
   (:tick
-     (draw-rectangle (transform-position)
-                     (transform-size)
-                     (rectangle-color *behavior*)
-                     :depth (rectangle-depth *behavior*))))
+   (draw-rectangle (if (entity-find-behavior *entity* 'render-transform)
+                       (render-transform-position)
+                       (transform-position))
+                   (transform-size)
+                   (rectangle-color *behavior*)
+                   :depth (rectangle-depth *behavior*))))
 
 (defbehavior sprite
     (texture
@@ -108,7 +128,10 @@
      (layer :init 1))
   (:required-behaviors transform)
   (:tick
-     (draw-texture (transform-position)
+   (let ((render-transform (entity-find-behavior *entity* 'render-transform)))
+     (draw-texture (if render-transform
+                       (render-transform-position)
+                       (transform-position))
                    ;; Scale transform-size by the dimensions of the texture
                    (let* ((width (texture-width (sprite-texture)))
                           (height (texture-height (sprite-texture)))
@@ -117,9 +140,11 @@
                          (vec2 (/ sum height 2)
                                (/ sum width 2))))
                    (sprite-texture)
-                   :rotation (transform-rotation)
+                   :rotation (if render-transform
+                                 (render-transform-rotation)
+                                 (transform-rotation))
                    :depth (sprite-depth)
-                   :layer (sprite-layer))))
+                   :layer (sprite-layer)))))
 
 (defbehavior move
   ((dx :init 0.0)

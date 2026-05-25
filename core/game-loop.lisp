@@ -30,7 +30,9 @@
 (defun (setf accumulative-delta-time) (new-value)
   (setf *accumulative-delta-time* new-value))
 
-(defvar *tick-delta* (/ 1.0 60.0))
+(defvar *base-tick-delta* (/ 1.0 60.0))
+
+(defvar *tick-delta* *base-tick-delta*)
 
 (defun tick-delta ()
   *tick-delta*)

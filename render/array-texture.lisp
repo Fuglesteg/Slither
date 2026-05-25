@@ -67,6 +67,8 @@
                          0 0 0 0
                          width height amount
                          :rgba :unsigned-byte (static-vectors:static-vector-pointer repacked-data))
+
+    (gl:generate-mipmap :texture-2d-array)
     (gl:tex-parameter :texture-2d-array :texture-min-filter :nearest)
     (gl:tex-parameter :texture-2d-array :texture-mag-filter :nearest)
     (gl:tex-parameter :texture-2d-array :texture-max-level 0)

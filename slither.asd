@@ -48,6 +48,7 @@
                 ((:file "socket")
                  (:file "protocol")
                  (:file "connection")
+                 (:file "client-prediction")
                  (:file "networked")
                  (:file "server")
                  (:file "client")

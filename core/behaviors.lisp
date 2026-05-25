@@ -44,6 +44,16 @@
   (declare (special *behavior*))
   (call-next-method))
 
+(defmethod pre-start ((behavior behavior)))
+(defmethod pre-start :around ((*behavior* behavior))
+  (declare (special *behavior*))
+  (call-next-method))
+
+(defmethod post-start ((behavior behavior)))
+(defmethod post-start :around ((*behavior* behavior))
+  (declare (special *behavior*))
+  (call-next-method))
+
 (defmacro define-behavior-accessor (behavior slot-name &key reader writer networked)
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name))))
         (accessor-form `(slot-value
@@ -163,6 +173,16 @@
                ((string= keyword-or-symbol :post-fixed-tick)
                 (push
                  `(defmethod post-fixed-tick ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :pre-start)
+                (push
+                 `(defmethod pre-start ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :post-start)
+                (push
+                 `(defmethod post-start ((,(gensym) ,name))
                     ,@arguments)
                  methods))
                ((string= keyword-or-symbol :start)

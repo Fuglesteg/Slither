@@ -23,5 +23,4 @@
     (audio-init)
       (with-event-loop
         (update-scene)
-        (input-poll)
         (renderer-flush))))
