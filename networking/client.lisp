@@ -87,16 +87,18 @@
            :start1 amount)
   *input-buffer*)
 
-(defun send-inputs (inputs)
-  (connection-add-subpacket *server-connection*
-                            (make-subpacket :input
-                                            inputs)))
+(defvar *input-packets* nil)
 
-(-> unprocessed-inputs () (vector t))
-(defun unprocessed-inputs ()
-  "Returns the inputs that the server has not yet processed.
-Intended to be used for client-side prediction."
-  *input-buffer*)
+(defun send-inputs (inputs)
+  (push (make-subpacket :input
+                        (current-tick)
+                        inputs)
+        *input-packets*)
+  (when (<= 5 (length *input-packets*))
+    (setf *input-packets* (subseq *input-packets* 0 5)))
+  (dolist (packet *input-packets*)
+    (connection-add-subpacket *server-connection*
+                              packet)))
 
 (defun send-timestamp ()
   (connection-add-subpacket *server-connection*
@@ -124,11 +126,8 @@ Intended to be used for client-side prediction."
                                             acknowledging-packet-id
                                             last-acknowledged-packets)
                (when (> tick (server-tick))
-                 (setf (server-tick) tick))
-               #+nil(when (> tick (current-tick))
-                      (setf (current-tick) tick)
-                      (setf (last-tick-time) (org.shirakumo.fraf.glfw:time))
-                      (slither/input::input-history-reset-to-tick tick))
+                 (setf (server-tick) tick)
+                 (slither/input::input-history-reset-to-tick tick))
                (let (failed-ownership-application)
                  (loop for (subpacket-type . subpacket) in subpackets
                        do (ecase subpacket-type
@@ -166,11 +165,4 @@ Intended to be used for client-side prediction."
                      (setf (networked-mode networked)
                            :client-predicted)))))))
   ;; Control tick rate to nudge the predicted ticks to match the estimated offset
-  (client-prediction-tick-rate-flush)
-  ;; Shift input buffer so that only the inputs from the last acknowledged packet to the current packet are available
-  (input-buffer-add slither/input::*inputs*)
-  (setf (fill-pointer *input-buffer*)
-        (clamp (- (connection-outbound-packet-id *server-connection*)
-                  (connection-last-acknowledged-sent-packet-id *server-connection*))
-               0
-               10)))
+  (client-prediction-tick-rate-flush))

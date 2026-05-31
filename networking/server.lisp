@@ -40,7 +40,7 @@
     :type string)))
 
 (defconstant +max-future-tick-amount+ 10)
-(defconstant +max-late-tick-amount+ 5)
+(defconstant +max-late-tick-amount+ 10)
 
 (defclass client-connection (connection)
   ((user
@@ -83,11 +83,18 @@
         (when (aref buffer i)
           (setf (aref buffer i) :processed))))))
 
+(defun inputs-index (tick)
+  (+ (- tick (current-tick)) +max-future-tick-amount+))
+
+(defun client-input (client tick)
+  (let ((index (inputs-index tick)))
+    (when (< -1 index (+ +max-future-tick-amount+ +max-late-tick-amount+))
+      (aref (client-connection-inputs-buffer client) index))))
+
 (defun client-inputs-add (client tick inputs)
-  (let ((index (+ (- tick (current-tick)) +max-future-tick-amount+)))
-    (if (< -1 index (+ +max-future-tick-amount+ +max-late-tick-amount+))
-        (setf (aref (client-connection-inputs-buffer client) index) inputs)
-        (format t "Missed input by ~a~%" index))))
+  (let ((index (inputs-index tick)))
+    (when (< -1 index (+ +max-future-tick-amount+ +max-late-tick-amount+))
+        (setf (aref (client-connection-inputs-buffer client) index) inputs))))
 
 (defun client-inputs-shift ()
   (do-hash-table (remote client *client-connections*)
@@ -228,8 +235,6 @@
                          ;; Simulate if a null tick exited the window of accepted inputs
                          (unless (aref (client-connection-inputs-buffer client-connection)
                                        (1- (length (client-connection-inputs-buffer client-connection))))
-                           (format t "Missed inputs for tick~a~%" (current-tick))
-                           (finish-output)
                            (tick entity)
                            (fixed-tick entity)))
                        (t
@@ -311,15 +316,17 @@
                                                    arguments)))
                             (:entity nil)
                             (:input (when connection
-                                      (destructuring-bind (buttons analogues) subpacket
-                                        (if (and (null buttons)
-                                                 (null analogues))
-                                            (client-inputs-add connection
-                                                               tick
-                                                               :empty)
-                                            (client-inputs-add connection
-                                                               tick
-                                                               (cons buttons analogues))))))
+                                      (destructuring-bind (tick buttons analogues) subpacket
+                                        (unless (eq (client-input connection tick)
+                                                    :processed)
+                                          (if (and (null buttons)
+                                                   (null analogues))
+                                              (client-inputs-add connection
+                                                                 tick
+                                                                 :empty)
+                                              (client-inputs-add connection
+                                                                 tick
+                                                                 (cons buttons analogues)))))))
                             (:destroy (destructuring-bind (networked-object-id) subpacket
                                         (remove-entity
                                          (behavior-entity
@@ -328,7 +335,7 @@
                                      (when connection
                                      (connection-add-subpacket connection (make-subpacket :echo argument))))))
                           (skip-packet ()
-                            :report "Skip the current packet"
+                            :report "Skip the current subpacket"
                             t)))
                (when connection
                  (setf (client-connection-last-tick-received connection) (current-tick))

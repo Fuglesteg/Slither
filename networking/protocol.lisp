@@ -93,11 +93,12 @@
            (packet-write-byte entity-id :bytes 2)
            (packet-write-sequence encoded-entity)))))
     (:input
-     (destructuring-bind (inputs) arguments
+     (destructuring-bind (tick inputs) arguments
        (let ((encoded-inputs (encode-inputs inputs)))
-         (with-vector-writer (make-octet-vector (+ 3 (length encoded-inputs))) (:write-integer packet-write-byte
+         (with-vector-writer (make-octet-vector (+ 1 4 2 (length encoded-inputs))) (:write-integer packet-write-byte
                                                                                 :write-sequence packet-write-sequence)
            (packet-write-byte 5 :bytes 1)
+           (packet-write-byte tick :bytes 4)
            (packet-write-byte (length encoded-inputs) :bytes 2)
            (packet-write-sequence encoded-inputs)))))
     (:owner
@@ -173,14 +174,16 @@
            entity)
           (+ packet-length 3))))
       (5
-       (let* ((packet-length (packet-read-bytes 2))
+       (let* ((tick (packet-read-bytes 4))
+              (packet-length (packet-read-bytes 2))
               (encoded-inputs (packet-read-sequence packet-length)))
          (multiple-value-bind (buttons analogues) (decode-inputs encoded-inputs)
            (values (list
                     :input
+                    tick
                     buttons
                     analogues)
-                   (+ packet-length 3)))))
+                   (+ packet-length 1 4 2)))))
       (6
        (let* ((packet-length (packet-read-bytes 2))
               (entity-ids (loop repeat (the integer (/ packet-length 2))
