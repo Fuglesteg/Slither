@@ -46,8 +46,9 @@
 (defvar *window* nil)
 
 (defun fps ()
-  (unless (= (delta-time) 0)
-    (/ 1 (delta-time))))
+  (if (= (delta-time) 0)
+      0.0
+      (/ 1 (delta-time))))
 
 (defun open-window (&rest initargs)
   (glfw:init)

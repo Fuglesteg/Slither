@@ -103,8 +103,6 @@
     (loop for behavior in (entity-behaviors entity)
           do (start behavior))))
 
-(defmethod start ((entity entity)))
-
 (defmethod entity-find-behavior ((entity entity) (behavior symbol))
   (find behavior (entity-behaviors entity)
         :key #'type-of))
@@ -157,6 +155,8 @@
 
 (defgeneric entity-networked-slots (entity))
 (defgeneric entity-networked-slots-with-behaviors (entity))
+(defgeneric entity-lag-compensated-slots (entity))
+(defgeneric entity-lag-compensated-slots-with-behaviors (entity))
 
 (defgeneric entity-find-networked-slot-id (entity slot-symbol &optional behavior))
 (defgeneric entity-find-networked-slot-symbol (entity slot-id))
@@ -169,7 +169,7 @@
                     return key)
               (incf *entity-type-id-counter*))))
     (setf (gethash entity-type-id *entity-type-id-table*) name)
-    (let (slot-symbols clos-slots networked-slots)
+    (let (slot-symbols clos-slots networked-slots lag-compensated-slots)
       (loop for slot in slots
             do (if (symbolp slot)
                    (progn (push slot slot-symbols)
@@ -178,6 +178,8 @@
                    (destructuring-bind (symbol &key init networked) slot
                      (when networked
                        (push symbol networked-slots))
+                     (when (eq networked :lag-compensation)
+                       (push symbol lag-compensated-slots))
                      (push symbol
                            slot-symbols)
                      (push (list symbol
@@ -295,9 +297,20 @@
              ,entity-type-id)
            (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
              ',networked-slots)
+           (defmethod entity-lag-compensated-slots ((entity-symbol (eql ',name)))
+             ',lag-compensated-slots)
+           (defmethod entity-lag-compensated-slots-with-behaviors ((entity ,name))
+             ',(append lag-compensated-slots
+                       (concatenate 'list
+                                    (mapcar (lambda (behavior)
+                                              (mapcar (lambda (slot-symbol)
+                                                        (cons (type-of behavior)
+                                                              slot-symbol))
+                                                      (behavior-lag-compensated-slots behavior)))
+                                            networked-behavior-symbols))))
            ,@(let* ((behaviors-networked-slots-overrides
-                    (loop for networked-behavior-symbol in networked-behavior-symbols
-                          append (behavior-networked-slots-overrides networked-behavior-symbol)))
+                      (loop for networked-behavior-symbol in networked-behavior-symbols
+                            append (behavior-networked-slots-overrides networked-behavior-symbol)))
                     (entity-and-behaviors-networked-slots
                       (let ((result nil))
                         (loop for networked-slot in networked-slots
@@ -309,7 +322,7 @@
                                            do (unless (find (cons behavior networked-slot) behaviors-networked-slots-overrides
                                                             :test 'equal)
                                                 (push (list networked-slot behavior)
-                                                    result))))
+                                                      result))))
                         result)))
                `((defmethod entity-find-networked-slot-symbol ((entity ,name) slot-id)
                    (ecase slot-id

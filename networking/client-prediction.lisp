@@ -6,7 +6,8 @@
            :ticks-to-predict
            :client-prediction-tick-rate-flush
            :estimated-tick-offset
-           :register-round-trip-time))
+           :register-round-trip-time
+           :reset-client-prediction))
 
 (in-package :slither/networking/client-prediction)
 
@@ -14,30 +15,49 @@
   0.0d0
   "RTT measures how long a packet takes to reach the server and return to the client")
 
-(let ((smoothed-server-tick 0.0d0))
+;; ---- Server tick accessor ----
+(let ((server-tick 0))
   (defun (setf server-tick) (new-value)
-    (incf smoothed-server-tick (* (- new-value smoothed-server-tick) 0.1)))
+    (setf server-tick new-value))
   (defun server-tick ()
-    (round smoothed-server-tick)))
+    server-tick))
 
 (defun estimated-tick-offset ()
-  (1+ (ceiling (/ *round-trip-time* (tick-delta)))))
+  "Conservative estimate of how many ticks the client should predict ahead
+   based on half the current round-trip time."
+  (max 1 (round (/ (/ *round-trip-time* 2.0d0) (tick-delta)))))
 
 (defun tick-drift ()
+  "Difference between the client's current tick and where we think
+   the server's authoritative tick is, after subtracting our prediction offset."
   (- (current-tick) (server-tick) (ticks-to-predict)))
 
-(let ((tick-offset nil)
+;; ---- Prediction state ----
+(let ((tick-offset 0)                ; ← was NIL – now starts at 0
       (smoothed-tick-drift 0.0d0)
       (ticks-at-current-offset 0))
+
+  (defun reset-client-prediction ()
+    (setf tick-offset 0)             ; reset to a valid number
+    (setf smoothed-tick-drift 0.0d0)
+    (setf ticks-at-current-offset 0))
+
   (defun register-round-trip-time (sent-at)
     (let ((raw-rtt (- (glfw:time) sent-at)))
-      (incf *round-trip-time* (* (- raw-rtt *round-trip-time*) 0.1)))
-    (unless tick-offset
-      (setf tick-offset (1+ (ceiling (/ *round-trip-time* (tick-delta)))))))
+      (cond
+        ((= *round-trip-time* 0.0d0)
+         (setf *round-trip-time* raw-rtt)
+         (setf tick-offset (estimated-tick-offset)))
+        (t (incf *round-trip-time* (* (- raw-rtt *round-trip-time*) 0.1))))))
+
   (defun ticks-to-predict ()
-    (or tick-offset 0))
+    tick-offset)                     ; now always a number
+
   (defun client-prediction-tick-rate-flush ()
+    ;; Smooth the instantaneous drift
     (incf smoothed-tick-drift (* (- (tick-drift) smoothed-tick-drift) 0.1))
+
+    ;; Fine‑grained adjustment: tweak tick delta if drift is large
     (cond
       ((> smoothed-tick-drift 0.5)
        (setf (tick-delta) (* slither/core::*base-tick-delta* 1.02)))
@@ -45,16 +65,21 @@
        (setf (tick-delta) (* slither/core::*base-tick-delta* 0.98)))
       (t
        (setf (tick-delta) slither/core::*base-tick-delta*)))
+
+    ;; Coarse adjustment: after 60 ticks at the current offset, if drift is still
+    ;; significant, shift the whole prediction window by one tick.
     (incf ticks-at-current-offset)
-    (when (> ticks-at-current-offset 120)
+    (when (> ticks-at-current-offset 60)
+      ;; Decide whether to step the offset; then always reset the counter
+      ;; so we wait another 60 ticks before the next possible adjustment.
       (cond
-        ((> smoothed-tick-drift 1.5)
-         (when tick-offset
-           (incf tick-offset))
-         (setf smoothed-tick-drift 0.0d0)
-         (setf ticks-at-current-offset -240))
-        ((< smoothed-tick-drift -1.5)
-         (when tick-offset
+        ((> smoothed-tick-drift 0.3)
+         (incf tick-offset)
+         (setf smoothed-tick-drift 0.0d0))
+        ((< smoothed-tick-drift -0.3)
+         ;; Prevent offset from going negative, mimicking the guard that was
+         ;; previously broken.
+         (when (plusp tick-offset)
            (decf tick-offset))
-         (setf smoothed-tick-drift 0.0d0)
-         (setf ticks-at-current-offset -240))))))
+         (setf smoothed-tick-drift 0.0d0)))
+      (setf ticks-at-current-offset 0))))

@@ -35,6 +35,7 @@
    :do-hash-table
    :do-each
    ;; Local
+   :copy-value
    :continuable
    :symbol->camel-case
    :function-symbol->global-variable-symbol
@@ -57,6 +58,12 @@
    :position-apply-anchor))
 
 (in-package #:slither/utils)
+
+(defun copy-value (value)
+  (typecase value
+    (vec (vcoopy value))
+    (sequence (copy-seq value))
+    (t value)))
 
 (defun safe-vscale (a s)
   (if (or (= 0 s)

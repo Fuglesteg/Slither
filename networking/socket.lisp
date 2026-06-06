@@ -9,7 +9,7 @@
 
 (in-package :slither/networking/socket)
 
-(defvar *socket*)
+(defvar *socket* nil)
 
 (defun socket-open ()
   (setf *socket*
@@ -21,14 +21,17 @@
   (sb-bsd-sockets:socket-bind *socket* #(0 0 0 0) port))
 
 (defun socket-close ()
-  (sb-bsd-sockets:socket-close *socket*)
-  (setf *socket* nil))
+  (when *socket*
+    (sb-bsd-sockets:socket-close *socket*)
+    (setf *socket* nil)))
 
 (defvar *receiving-data-buffer*
   (make-array 1500 ; 1500 is the usual page size limit of UDP
               :element-type '(unsigned-byte 8)))
 
 (defun socket-receive ()
+  (unless *socket*
+    (error "Missing socket connection"))
   (multiple-value-bind (data length remote-address remote-port)
       (sb-bsd-sockets:socket-receive *socket*
                                      *receiving-data-buffer*
