@@ -119,10 +119,12 @@
 (defmethod fixed-tick :around ((scene scene))
   (loop repeat (accumulated-ticks slither/core::*current-time*)
         do (incf (current-tick))
+           (inputs-update)
+           (input-history-record)
            (call-next-method)
            (let ((slither/core::*delta-time* (tick-delta)))
-             (fixed-update-entities)))
-  (input-poll))
+             (fixed-update-entities))
+           (inputs-tick)))
 
 (defmethod fixed-tick ((scene scene)))
 
