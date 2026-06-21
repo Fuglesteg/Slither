@@ -124,7 +124,7 @@
                         (push (list slot
                                     :initarg (intern (symbol-name slot) :keyword))
                               clos-slots))
-                 (destructuring-bind (symbol &key init writer reader networked networked-overrides) slot
+                 (destructuring-bind (symbol &key (init nil init-supplied-p) writer reader networked networked-overrides) slot
                    (push symbol
                          slot-symbols)
                    (when networked
@@ -139,7 +139,7 @@
                        (setf (gethash symbol slot-writers) writer))
                      (when reader
                        (setf (gethash symbol slot-readers) reader))
-                     (when init
+                     (when init-supplied-p
                        (nconc clos-slot
                               `(:initform ,init)))
                      (push clos-slot

@@ -177,17 +177,21 @@
                    (progn (push slot slot-symbols)
                           (list slot
                                 :initarg (intern (symbol-name slot) :keyword)))
-                   (destructuring-bind (symbol &key init networked) slot
+                   (destructuring-bind (symbol &key (init nil init-supplied-p) networked) slot
                      (when networked
                        (push symbol networked-slots))
                      (when (eq networked :lag-compensation)
                        (push symbol lag-compensated-slots))
                      (push symbol
                            slot-symbols)
-                     (push (list symbol
-                                 :initform init
-                                 :initarg (intern (symbol-name symbol) :keyword))
-                           clos-slots))))
+                     (let ((slot (list symbol
+                                      :initarg (intern (symbol-name symbol) :keyword))))
+                       (when init-supplied-p
+                         (nconc
+                          slot
+                          (list :initform init)))
+                     (push slot
+                           clos-slots)))))
       (setf slot-symbols (nreverse slot-symbols))
       (setf clos-slots (nreverse clos-slots))
       (let (behavior-symbols methods)
