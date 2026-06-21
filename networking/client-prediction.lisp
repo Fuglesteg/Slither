@@ -24,11 +24,11 @@
   (defun reset-client-prediction ()
     (setf smoothed-round-trip-time 0.0d0))
   (defun client-prediction-tick-rate-flush ()
-    (let* ((target-tick (+ (server-tick) (ceiling (/ smoothed-round-trip-time
-                                                     (tick-delta)))))
+    (let* ((target-tick (+ (server-tick) (/ smoothed-round-trip-time
+                                            (tick-delta))))
            (tick-offset (- (current-tick) target-tick)))
       (cond
-        ((> (abs tick-offset) 100) (setf (current-tick) target-tick))
+        ((> (abs tick-offset) 5) (setf (current-tick) (ceiling target-tick)))
         ((> tick-offset 1.5)
          (setf (tick-delta) (* slither/core::*base-tick-delta* 1.02)))
         ((< tick-offset -1.5)
