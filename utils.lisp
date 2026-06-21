@@ -35,6 +35,7 @@
    :do-hash-table
    :do-each
    ;; Local
+   :copy-value
    :continuable
    :symbol->camel-case
    :function-symbol->global-variable-symbol

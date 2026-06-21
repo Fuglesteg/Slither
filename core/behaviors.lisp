@@ -102,6 +102,7 @@
 
 (defgeneric behavior-networked-slots (behavior-symbol))
 (defgeneric behavior-networked-slots-overrides (behavior-symbol))
+(defgeneric behavior-lag-compensated-slots (behavior-symbol))
 
 (defgeneric behavior-encode (behavior))
 (defgeneric behavior-encode-full (behavior))
@@ -113,6 +114,7 @@
         clos-slots
         slot-symbols
         networked-slots
+        lag-compensated-slots
         networked-slots-overrides
         (slot-readers (make-hash-table))
         (slot-writers (make-hash-table)))
@@ -127,6 +129,8 @@
                          slot-symbols)
                    (when networked
                      (push symbol networked-slots))
+                   (when (eq networked :lag-compensation)
+                     (push symbol lag-compensated-slots))
                    (when networked-overrides
                      (dolist (override networked-overrides)
                        (push override networked-slots-overrides)))
@@ -252,6 +256,8 @@
                ,(behavior-decoder networked-slots))))
        (defmethod behavior-networked-slots ((behavior-symbol (eql ',name)))
          ',networked-slots)
+       (defmethod behavior-lag-compensated-slots ((behavior-symbol (eql ',name)))
+         ',lag-compensated-slots)
        (defmethod behavior-networked-slots-overrides ((behavior-symbol (eql ',name)))
          ',networked-slots-overrides)
        ,@methods)))

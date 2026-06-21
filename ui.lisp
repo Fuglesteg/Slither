@@ -1,7 +1,6 @@
 (uiop:define-package :slither/ui
   (:use :cl
         :slither/utils
-        :slither/serialization
         :slither/core
         :slither/input
         :slither/window

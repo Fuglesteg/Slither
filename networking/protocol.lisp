@@ -3,8 +3,7 @@
         :ieee-floats
         :slither/utils
         :slither/input
-        :slither/core
-        :slither/serialization)
+        :slither/core)
   (:export :packet-parse-header
            :make-packet-header
            :make-subpacket

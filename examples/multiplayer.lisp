@@ -27,6 +27,8 @@
 (defscene multiplayer-client ()
   (:start
    (start-network-client (list #(127 0 0 1) 7777)))
+  (:fixed-tick
+   (process-inbound-prediction))
   (:tick
    (flush-server-connection)))
 

@@ -37,7 +37,7 @@
 
 (defbehavior transform
   ((position :init (vec2 0.0)
-             :networked t)
+             :networked :lag-compensation)
    (size :init (vec2 1.0 1.0)
          :networked t)
    (rotation :init 0
@@ -86,15 +86,15 @@
      (setf (render-transform-smoothed-position)
            (vlerp (render-transform-smoothed-position)
                   (transform-position)
-                  0.2))
+                  0.3))
      (setf (render-transform-smoothed-rotation)
            (rotation-lerp (render-transform-smoothed-rotation)
                           (transform-rotation)
-                          0.2))
+                          0.3))
      (setf (render-transform-smoothed-size)
            (vlerp (render-transform-smoothed-size)
                   (transform-size)
-                  0.2))))
+                  0.3))))
   (:tick
    (when (clientp)
        (setf (render-transform-position)

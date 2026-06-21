@@ -71,13 +71,14 @@
 
 (defbehavior rigidbody
     ((colliders :init (list))
-     (mass :init 1.0)
+     (mass :init 1.0
+           :networked t)
      (bounciness :init 0.0)
      (drag :init 0.0)
      (velocity :init (vec2)
-               :networked t)
+               :networked :lag-compensation)
      (position :init (vec2)
-               :networked t
+               :networked :lag-compensation
                :networked-overrides ((transform position))))
   (:networked t)
   (:required-behaviors

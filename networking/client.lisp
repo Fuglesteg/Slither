@@ -2,6 +2,7 @@
   (:use :cl
         :slither/utils
         :slither/core
+        :slither/input
         :slither/scenes
         :slither/networking/protocol
         :slither/networking/client-prediction
@@ -14,8 +15,10 @@
   (:export
    :flush-server-connection
    :init-server-connection
+   :process-inbound-prediction
    :send-inputs
-   :unprocessed-inputs))
+   :unprocessed-inputs
+   :disconnect))
 
 (in-package :slither/networking/client)
 
@@ -41,128 +44,184 @@
             port))))
 
 (defun connect-to-server (host &optional (username "Solan Gundersen"))
+  (reset-client-prediction)
   (socket-open)
   (setf *server-connection*
         (make-instance 'server-connection
                        :remote (host-address host)))
   (connection-add-subpacket *server-connection* (make-subpacket :connect username)))
 
-(defparameter *inbound-packet-buffer* (make-array 1000
-                                                  :fill-pointer 0
-                                                  :initial-element (make-octet-vector 0)
-                                                  :element-type 'octet-vector))
+(defvar *inbound-packet-buffer-lock* (sb-thread:make-mutex :name "inbound-packet-buffer"))
+(defvar *inbound-packet-buffer* (make-array 1000
+                                            :fill-pointer 0
+                                            :initial-element (make-octet-vector 0)
+                                            :element-type 'octet-vector))
+
+(defun disconnect ()
+  (setf (connection-outbound-subpackets *server-connection*)
+        (list (make-subpacket :disconnect)))
+  (connection-flush *server-connection*)
+  (socket-close)
+  (setf (fill-pointer *inbound-packet-buffer*) 0)
+  (setf *server-connection* nil))
 
 (defun run-server-connection (address &optional username)
   (declare (ignore address username))
-  (unwind-protect
-       (loop
-         (vector-push (socket-receive)
-                      *inbound-packet-buffer*))
-    (socket-close)
-    (setf *server-connection* nil)))
+  (ignore-errors
+    (unwind-protect
+         (loop
+           (let ((packet (socket-receive)))
+             (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
+               (vector-push packet
+                            *inbound-packet-buffer*))))
+      (socket-close)
+      (setf *server-connection* nil))))
+
+(defvar *server-connection-thread* nil)
 
 (defun init-server-connection (address &optional username)
   (connect-to-server address username)
-  (sb-thread:make-thread
-   (lambda ()
-     (run-server-connection address username))
-   :name "server-connection"))
-
-(defconstant +input-buffer-size+ 20)
-
-(defvar *input-buffer*
-  (make-array +input-buffer-size+
-              :fill-pointer 0
-              :initial-element nil))
-
-(defun input-buffer-add (inputs)
-  (input-buffer-shift)
-  (setf (aref *input-buffer* 0) inputs))
-
-(defun input-buffer-shift (&optional (amount 1))
-  (unless (<= (1- (array-total-size *input-buffer*))
-             (fill-pointer *input-buffer*))
-    (incf (fill-pointer *input-buffer*)))
-  (replace *input-buffer* *input-buffer*
-           :start1 amount)
-  *input-buffer*)
+  (setf *server-connection-thread*
+        (sb-thread:make-thread
+         (lambda ()
+               (run-server-connection address username))
+         :name "slither-server-connection")))
 
 (defvar *input-packets* nil)
 
 (defun send-inputs (inputs)
-  (push (make-subpacket :input
-                        (current-tick)
-                        inputs)
-        *input-packets*)
-  (when (<= 5 (length *input-packets*))
-    (setf *input-packets* (subseq *input-packets* 0 5)))
-  (dolist (packet *input-packets*)
-    (connection-add-subpacket *server-connection*
-                              packet)))
+  (connection-add-subpacket *server-connection*
+                            (make-subpacket :input
+                                            (current-tick)
+                                            inputs)))
+
+; Server tick 230
+; RTT is 400 ms
+; Client should predict 0.4 / (1 / 60) / 2 = 12
+; Client tick is then 242
+; Client sends input for tick 242 which arrives ~200 ms later
+; Server tick should then be 242 which means the tick arrives in time for current server tick
+
+; Actual logs:
+
+; Client
+
+; Sending input for tick 201697
+; Server tick 201683
+; Sending input for tick 201698
+; Server tick 201683
+
+; Server
+
+; Received input for tick 201697
+; LAG-RESIM tick=201695 entity=PLAYER input-found=T
+; LAG-RESIM tick=201696 entity=PLAYER input-found=T
+; LAG-RESIM tick=201697 entity=PLAYER input-found=T
+; SIM-NO-INPUT 201707
+; SIM-NO-INPUT 201708
+; Received input for tick 201698
+; LAG-RESIM tick=201698 entity=PLAYER input-found=T
+; SIM-NO-INPUT 201709
 
 (defun send-timestamp ()
   (connection-add-subpacket *server-connection*
                             (make-subpacket :echo
                                             (glfw:time))))
 
+(defun process-inbound-packets ()
+  (when *server-connection*
+    (let ((inbound-packet-buffer
+            (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
+              (prog1 (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))
+                (setf (fill-pointer *inbound-packet-buffer*) 0)))))
+      (loop for packet across inbound-packet-buffer
+            when packet
+            do (multiple-value-bind (protocol
+                                     tick
+                                     packet-id
+                                     acknowledging-packet-id
+                                     last-acknowledged-packets
+                                     subpackets) (parse-packet packet)
+                 (declare (ignore protocol))
+                 (connection-acknowledge-received *server-connection*
+                                                  packet-id)
+                 (connection-acknowledge-sent *server-connection*
+                                              acknowledging-packet-id
+                                              last-acknowledged-packets)
+                 (when (< (server-tick) tick)
+                   (setf (server-tick) tick))
+                 (let (failed-ownership-application)
+                   (loop for (subpacket-type . subpacket) in subpackets
+                         do (ecase subpacket-type
+                              (:connect
+                               (slither/input::input-history-reset-to-tick (current-tick)))
+                              (:update
+                               (destructuring-bind (networked-object-id place-id new-value) subpacket
+                                 (when-let ((networked-object (find-networked networked-object-id)))
+                                   (when (<= (networked-last-tick-update networked-object) tick)
+                                     (networked-apply-update networked-object
+                                                             place-id
+                                                             new-value)
+                                     (setf (networked-last-tick-update networked-object) tick)))))
+                              (:action)
+                              (:entity
+                               (destructuring-bind (entity-type-id entity) subpacket
+                                 (declare (ignore entity-type-id))
+                                 (add-entity entity)))
+                              (:owner
+                               (destructuring-bind (entity-ids) subpacket
+                                 (loop for entity-id in entity-ids
+                                       do (alexandria:if-let ((networked (find-networked entity-id)))
+                                            (setf (networked-mode networked)
+                                                  :client-predicted)
+                                            (push entity-id failed-ownership-application)))))
+                              (:destroy
+                               (destructuring-bind (networked-object-id) subpacket
+                                 (when-let ((networked (find-networked networked-object-id)))
+                                   (remove-entity (behavior-entity networked)))))
+                              (:echo
+                               (destructuring-bind (time) subpacket
+                                 (register-round-trip-time (- (glfw:time) time))))))
+                   (dolist (entity-id failed-ownership-application)
+                     (alexandria:when-let ((networked (find-networked entity-id)))
+                       (setf (networked-mode networked)
+                             :client-predicted)))
+                   (let ((networked-to-predict nil)
+                         (earliest-tick nil))
+                     (do-hash-table (networked-id networked (networked-objects))
+                       (declare (ignore networked-id))
+                       (when (and (eq (networked-mode networked)
+                                      :client-predicted)
+                                  (networked-needs-simulation networked))
+                         (cond
+                           ((not earliest-tick) (setf earliest-tick (networked-last-tick-update networked)))
+                           ((< (networked-last-tick-update networked)
+                               earliest-tick)
+                            (setf earliest-tick (networked-last-tick-update networked))))
+                         (push networked networked-to-predict)))
+                     (when earliest-tick
+                       (let ((ticks-to-resimulate (- (current-tick)
+                                                     earliest-tick
+                                                     1))) ; -1 because current tick is handled by normal fixed-tick update
+                         (dotimes (tick-count (max 0 ticks-to-resimulate))
+                           (let ((tick (+ earliest-tick tick-count)))
+                             (dolist (networked networked-to-predict)
+                               (when (>= tick (networked-last-tick-update networked))
+                                 (slither/input::input-history-apply (networked-simulated-inputs networked) tick)
+                                 (let ((slither/input::*inputs* (networked-simulated-inputs networked))
+                                       (slither/core::*delta-time* (tick-delta)))
+                                   (fixed-tick (behavior-entity networked))))
+                               (setf (networked-needs-simulation networked) nil)))))))))))))
+
+(-> process-inbound-prediction () ())
+(defun process-inbound-prediction ()
+  (when *server-connection*
+    (process-inbound-packets)
+    (send-inputs slither/input::*inputs*)
+    (send-timestamp)))
+
 (-> flush-server-connection () ())
 (defun flush-server-connection ()
-  (send-inputs slither/input::*inputs*)
-  (send-timestamp)
-  (connection-flush *server-connection*)
-  (let ((inbound-packet-buffer (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))))
-    (setf (fill-pointer *inbound-packet-buffer*) 0)
-    (loop for packet across inbound-packet-buffer
-          do (multiple-value-bind (protocol
-                                   tick
-                                   packet-id
-                                   acknowledging-packet-id
-                                   last-acknowledged-packets
-                                   subpackets) (parse-packet packet)
-               (declare (ignore protocol))
-               (connection-acknowledge-received *server-connection*
-                                                packet-id)
-               (connection-acknowledge-sent *server-connection*
-                                            acknowledging-packet-id
-                                            last-acknowledged-packets)
-               (when (> tick (server-tick))
-                 (setf (server-tick) tick)
-                 (slither/input::input-history-reset-to-tick tick))
-               (let (failed-ownership-application)
-                 (loop for (subpacket-type . subpacket) in subpackets
-                       do (ecase subpacket-type
-                            (:connect
-                             (setf (current-tick) (+ tick (estimated-tick-offset))))
-                            (:update
-                             (destructuring-bind (networked-object-id place-id new-value) subpacket
-                               (when-let ((networked-object (find-networked networked-object-id)))
-                                 (when (<= (networked-last-tick-update networked-object) tick)
-                                   (networked-apply-update networked-object
-                                                           place-id
-                                                           new-value)
-                                   (setf (networked-last-tick-update networked-object) tick)))))
-                            (:action)
-                            (:entity
-                             (destructuring-bind (entity-type-id entity) subpacket
-                               (declare (ignore entity-type-id))
-                               (add-entity entity)))
-                            (:owner
-                             (destructuring-bind (entity-ids) subpacket
-                               (loop for entity-id in entity-ids
-                                     do (alexandria:if-let ((networked (find-networked entity-id)))
-                                          (setf (networked-mode networked)
-                                                :client-predicted)
-                                          (push entity-id failed-ownership-application)))))
-                            (:destroy
-                             (destructuring-bind (networked-object-id) subpacket
-                               (when-let ((networked (find-networked networked-object-id)))
-                                 (remove-entity (behavior-entity networked)))))
-                            (:echo
-                             (destructuring-bind (time) subpacket
-                               (register-round-trip-time time)))))
-                 (dolist (entity-id failed-ownership-application)
-                   (alexandria:when-let ((networked (find-networked entity-id)))
-                     (setf (networked-mode networked)
-                           :client-predicted)))))))
-  ;; Control tick rate to nudge the predicted ticks to match the estimated offset
-  (client-prediction-tick-rate-flush))
+  (when *server-connection*
+    (connection-flush *server-connection*)
+    (client-prediction-tick-rate-flush)))
