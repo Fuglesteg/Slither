@@ -1,19 +1,4 @@
-(uiop:define-package :slither/serialization
-  (:use :cl
-        :org.shirakumo.fraf.math.vectors
-        :ieee-floats
-        :slither/utils)
-  (:export
-   :encode-argument
-   :decode-arguments
-   :decode-argument
-   :encode-arguments
-   :vector-read-integer
-   :integer->byte-array
-   :with-vector-reader
-   :with-vector-writer))
-
-(in-package :slither/serialization)
+(in-package :slither/core)
 
 (eval-always
   (defmacro with-vector-reader (vector reader-form &body body)
@@ -66,8 +51,9 @@
          (mapcar #'encode-argument arguments)))
 
 (-> encode-argument ((or integer single-float double-float
-                         vec2 vec3 vec4 string))
-    (vector (unsigned-byte 8)))
+                         vec2 vec3 vec4 string
+                         entity cons null t))
+    octet-vector)
 (defun encode-argument (argument)
   (etypecase argument
     (integer (concatenate '(vector (unsigned-byte 8))
@@ -98,7 +84,21 @@
               (argument-write-byte 6 :bytes 1)
               (argument-write-byte (length argument) :bytes 2)
               (loop for char across argument
-                    do (argument-write-byte (char-code char) :bytes 1))))))
+                    do (argument-write-byte (char-code char) :bytes 1))))
+    (entity (with-vector-writer (make-octet-vector 3) (:write-integer argument-write-byte)
+                           (argument-write-byte 7 :bytes 1)
+                           (argument-write-byte (uiop:symbol-call :slither/networking/networked :networked-id argument) :bytes 2)))
+    (cons (let* ((encoded-arguments (cons (encode-argument (car argument))
+                                          (encode-argument (cdr argument))))
+                 (total-length (+ (length (car encoded-arguments))
+                                  (length (cdr encoded-arguments)))))
+            (with-vector-writer (make-octet-vector (1+ total-length)) (:write-integer argument-write-byte
+                                                                       :write-sequence argument-write-sequence)
+              (argument-write-byte 8 :bytes 1)
+              (argument-write-sequence (car encoded-arguments))
+              (argument-write-sequence (cdr encoded-arguments)))))
+    (null (octet-vector 9))
+    (t (octet-vector 10))))
 
 (defun decode-arguments (arguments)
   (let (parsed)
@@ -134,7 +134,17 @@
                          (decode-float32 (read-integer :bytes 4))))
                 (6 (let ((string-length (read-integer :bytes 2)))
                      (incf bytes-read string-length)
-                     (map 'string #'code-char (subseq argument-vector 0 string-length)))))))
+                     (map 'string #'code-char (subseq argument-vector 0 string-length))))
+                (7 (behavior-entity (uiop:symbol-call :slither/networking/networked
+                                                      :find-networked
+                                                      (read-integer :bytes 2))))
+                (8 (multiple-value-bind (inner-parsed-argument inner-bytes-read) (decode-argument argument-vector)
+                     (incf bytes-read inner-bytes-read)
+                     (setf argument-vector (subseq argument-vector inner-bytes-read))
+                     (cons inner-parsed-argument
+                           (decode-argument argument-vector))))
+                (9 nil)
+                (10 t))))
         (values parsed-argument
                 bytes-read)))))
 

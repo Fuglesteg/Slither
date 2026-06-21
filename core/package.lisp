@@ -1,9 +1,9 @@
 (uiop:define-package #:slither/core
   (:use #:cl
+        #:ieee-floats
         #:org.shirakumo.fraf.math.vectors
         #:org.shirakumo.fraf.math.matrices
-        #:slither/utils
-        #:slither/serialization)
+        #:slither/utils)
   (:export #:start
            #:tick
            #:fixed-tick
@@ -21,6 +21,7 @@
            #:entity-find-networked-slot-symbol
            #:entity-networked-slots-with-behaviors
            #:entity-networked-slots
+           #:entity-lag-compensated-slots-with-behaviors
            #:*behavior*
            #:behavior
            #:behavior-invoke
@@ -38,4 +39,13 @@
            #:accumulative-delta-time
            #:interpolation-alpha
            #:calculate-delta-time
-           #:accumulated-ticks))
+           #:accumulated-ticks
+           ; Serialization
+           #:encode-argument
+           #:decode-arguments
+           #:decode-argument
+           #:encode-arguments
+           #:vector-read-integer
+           #:integer->byte-array
+           #:with-vector-reader
+           #:with-vector-writer))

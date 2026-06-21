@@ -18,11 +18,11 @@
                #:serapeum)
   :serial t
   :components ((:file "utils")
-               (:file "serialization")
                (:module "core"
                 :serial t
                 :components
                 ((:file "package")
+                 (:file "serialization")
                  (:file "entities")
                  (:file "behaviors")
                  (:file "game-loop")))

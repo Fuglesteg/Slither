@@ -58,6 +58,12 @@
 
 (in-package #:slither/utils)
 
+(defun copy-value (value)
+  (typecase value
+    (vec (vcopy value))
+    (sequence (copy-seq value))
+    (t value)))
+
 (defun safe-vscale (a s)
   (if (or (= 0 s)
           (= 0 (vx a))

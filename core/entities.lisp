@@ -141,9 +141,11 @@
        (slot-value entity ',slot-name))
      (defun (setf ,accessor-symbol) (new-value &optional (entity *entity*))
        ,@(when networked
-           `((uiop:symbol-call :slither/networking/networked :networked-register-place-change
-                              (entity-find-behavior entity 'networked)
-                              ',slot-name)))
+           `((let ((networked (entity-find-behavior entity 'networked)))
+               (when networked
+                 (uiop:symbol-call :slither/networking/networked :networked-register-place-change
+                                   networked
+                                   ',slot-name)))))
        (setf (slot-value entity ',slot-name) new-value)))))
 
 (defmacro define-entity-method (entity name method-arguments &body body)
@@ -295,6 +297,17 @@
              ,entity-type-id)
            (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
              ',networked-slots)
+           (defmethod entity-lag-compensated-slots ((entity-symbol (eql ',name)))
+             ',lag-compensated-slots)
+           (defmethod entity-lag-compensated-slots-with-behaviors ((entity ,name))
+             ',(append lag-compensated-slots
+                       (concatenate 'list
+                                    (mapcan (lambda (behavior)
+                                              (mapcar (lambda (slot-symbol)
+                                                        (cons behavior
+                                                              slot-symbol))
+                                                      (behavior-lag-compensated-slots behavior)))
+                                            networked-behavior-symbols))))
            ,@(let* ((behaviors-networked-slots-overrides
                     (loop for networked-behavior-symbol in networked-behavior-symbols
                           append (behavior-networked-slots-overrides networked-behavior-symbol)))
@@ -332,7 +345,7 @@
            ,@(flet ((entity-encoder (slots behaviors)
                           `(let* ((entity-data (concatenate '(vector (unsigned-byte 8))
                                                            ,@(loop for slot in slots
-                                                                   collect `(slither/serialization:encode-argument
+                                                                   collect `(encode-argument
                                                                              (slot-value entity ',slot)))))
                                  (behavior-data (concatenate '(vector (unsigned-byte 8))
                                                              ,@(loop for behavior in behaviors
@@ -352,7 +365,7 @@
                                                               :read-sequence entity-vector-read-sequence)
                              (let* ((entity-size (read-integer 2))
                                     (arguments (when (< 0 entity-size)
-                                                 (slither/serialization:decode-arguments
+                                                 (decode-arguments
                                                   (entity-vector-read-sequence entity-size))))
                                     (entity (make-instance
                                              ',(find-entity-type-by-id entity-type-id)

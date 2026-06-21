@@ -224,7 +224,7 @@
                   `(let ((behavior-data (apply #'concatenate
                                                '(vector (unsigned-byte 8))
                                                (mapcar
-                                                #'slither/serialization:encode-argument
+                                                #'encode-argument
                                                 (list ,@(loop for slot in slots
                                                               collect `(slot-value behavior ',slot)))))))
                      (with-vector-writer (make-array (+ 2 (length behavior-data))
@@ -234,7 +234,7 @@
                       (behavior-write-integer (length behavior-data) :bytes 2)
                       (behavior-write-sequence behavior-data))))
                 (behavior-decoder (slots)
-                  `(let ((arguments (slither/serialization:decode-arguments behavior-vector)))
+                  `(let ((arguments (decode-arguments behavior-vector)))
                      (declare (ignorable arguments))
                      (make-instance ',name
                                     :entity entity
