@@ -277,7 +277,7 @@
 (defun screen-space-position (vector)
   (if (= 0 (mdet *view-matrix*))
       vector
-      (m* (minv *view-matrix*) vector)))
+      (m* *view-matrix* vector)))
 
 (defun screen-space-scale (vector)
     (v/ vector
