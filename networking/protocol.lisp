@@ -220,7 +220,6 @@
      subpackets-used)))
 
 (defun parse-packet (packet)
-  (declare (optimize (debug 3)))
   (multiple-value-bind (protocol
                         tick
                         packet-id

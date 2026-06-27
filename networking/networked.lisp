@@ -171,7 +171,7 @@
           (setf (slot-value entity slot-symbol) new-value)))))
 
 (defun networked-register-place-change (networked place-symbol &optional behavior-symbol)
-  (when (eq (networking-environment) :server)
+  (when (serverp)
     (pushnew (entity-find-networked-slot-id (behavior-entity networked) place-symbol behavior-symbol)
              (networked-updated-places networked))))
 

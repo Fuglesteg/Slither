@@ -79,7 +79,8 @@
    (setf (render-transform-previous-smoothed-rotation) (transform-rotation))
    (setf (render-transform-rotation) (transform-rotation)))
   (:fixed-tick
-   (when (clientp)
+   (when (or (clientp)
+             (null (networking-environment)))
      (setf (render-transform-previous-smoothed-position) (render-transform-smoothed-position))
      (setf (render-transform-previous-smoothed-size) (render-transform-smoothed-size))
      (setf (render-transform-previous-smoothed-rotation) (render-transform-smoothed-rotation))
@@ -96,7 +97,8 @@
                   (transform-size)
                   0.3))))
   (:tick
-   (when (clientp)
+   (when (or (clientp)
+             (null (networking-environment)))
        (setf (render-transform-position)
              (vlerp (render-transform-previous-smoothed-position)
                     (render-transform-smoothed-position)

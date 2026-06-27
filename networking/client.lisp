@@ -150,42 +150,38 @@
                                               last-acknowledged-packets)
                  (when (< (server-tick) tick)
                    (setf (server-tick) tick))
-                 (let (failed-ownership-application)
-                   (loop for (subpacket-type . subpacket) in subpackets
-                         do (ecase subpacket-type
-                              (:connect
-                               (slither/input::input-history-reset-to-tick (current-tick)))
-                              (:update
-                               (destructuring-bind (networked-object-id place-id new-value) subpacket
-                                 (when-let ((networked-object (find-networked networked-object-id)))
-                                   (when (<= (networked-last-tick-update networked-object) tick)
-                                     (networked-apply-update networked-object
-                                                             place-id
-                                                             new-value)
-                                     (setf (networked-last-tick-update networked-object) tick)))))
-                              (:action)
-                              (:entity
-                               (destructuring-bind (entity-type-id entity) subpacket
-                                 (declare (ignore entity-type-id))
-                                 (add-entity entity)))
-                              (:owner
-                               (destructuring-bind (entity-ids) subpacket
-                                 (loop for entity-id in entity-ids
-                                       do (alexandria:if-let ((networked (find-networked entity-id)))
-                                            (setf (networked-mode networked)
-                                                  :client-predicted)
-                                            (push entity-id failed-ownership-application)))))
-                              (:destroy
-                               (destructuring-bind (networked-object-id) subpacket
-                                 (when-let ((networked (find-networked networked-object-id)))
-                                   (remove-entity (behavior-entity networked)))))
-                              (:echo
-                               (destructuring-bind (time) subpacket
-                                 (register-round-trip-time (- (glfw:time) time))))))
-                   (dolist (entity-id failed-ownership-application)
-                     (alexandria:when-let ((networked (find-networked entity-id)))
-                       (setf (networked-mode networked)
-                             :client-predicted)))
+                 (loop for (subpacket-type . subpacket) in subpackets
+                       do (case subpacket-type
+                            (:connect
+                             (slither/input::input-history-reset-to-tick (current-tick)))
+                            (:echo
+                             (destructuring-bind (time) subpacket
+                               (register-round-trip-time (- (glfw:time) time))))
+                            (:entity
+                             (destructuring-bind (entity-type-id entity) subpacket
+                               (declare (ignore entity-type-id))
+                               (add-entity entity)))))
+                 (loop for (subpacket-type . subpacket) in subpackets
+                       do (case subpacket-type
+                            (:update
+                             (destructuring-bind (networked-object-id place-id new-value) subpacket
+                               (when-let ((networked-object (find-networked networked-object-id)))
+                                 (when (<= (networked-last-tick-update networked-object) tick)
+                                   (networked-apply-update networked-object
+                                                           place-id
+                                                           new-value)
+                                   (setf (networked-last-tick-update networked-object) tick)))))
+                            (:action)
+                            (:owner
+                             (destructuring-bind (entity-ids) subpacket
+                               (loop for entity-id in entity-ids
+                                     do (alexandria:if-let ((networked (find-networked entity-id)))
+                                          (setf (networked-mode networked)
+                                                :client-predicted)))))
+                            (:destroy
+                             (destructuring-bind (networked-object-id) subpacket
+                               (when-let ((networked (find-networked networked-object-id)))
+                                 (remove-entity (behavior-entity networked)))))))
                    (let ((networked-to-predict nil)
                          (earliest-tick nil))
                      (do-hash-table (networked-id networked (networked-objects))
@@ -211,7 +207,7 @@
                                  (let ((slither/input::*inputs* (networked-simulated-inputs networked))
                                        (slither/core::*delta-time* (tick-delta)))
                                    (fixed-tick (behavior-entity networked))))
-                               (setf (networked-needs-simulation networked) nil)))))))))))))
+                               (setf (networked-needs-simulation networked) nil))))))))))))
 
 (-> process-inbound-prediction () ())
 (defun process-inbound-prediction ()

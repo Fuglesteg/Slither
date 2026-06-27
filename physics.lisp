@@ -90,114 +90,114 @@
    (setf (rigidbody-position) (transform-position)))
   (:fixed-tick
    (when (slither/networking:networked-simulate-p)
-   ;; Drag
-   (vdecf (rigidbody-velocity)
-          (v* (rigidbody-velocity)
-              (vabs (rigidbody-velocity))
-              (- (rigidbody-drag))
-              (delta-time)))
+     ;; Drag
+     (vdecf (rigidbody-velocity)
+            (v* (rigidbody-velocity)
+                (vabs (rigidbody-velocity))
+                (- (rigidbody-drag))
+                (delta-time)))
 
-   ;; Collisions
-   (loop for this-collider in (rigidbody-colliders)
-         do (loop for foreign-collider in
-                  ;; Make sure the collision check doesn't run on a collider on current entity
-                     (remove-if-not
-                      (lambda (behavior)
-                        (not (eql (behavior-entity behavior) *entity*)))
-                      (behaviors-of-type 'circle-collider))
-                  ;; TODO: Add etypecase for other colliders
-                  do (let* ((offset (v- (rigidbody-position (behavior-entity foreign-collider))
-                                        (rigidbody-position)))
-                            (distance (vlength offset))
-                            (total-size (+ (circle-radius this-collider)
-                                           (circle-radius foreign-collider))))
+     ;; Collisions
+     (loop for this-collider in (rigidbody-colliders)
+           do (loop for foreign-collider in
+                    ;; Make sure the collision check doesn't run on a collider on current entity
+                       (remove-if-not
+                        (lambda (behavior)
+                          (not (eql (behavior-entity behavior) *entity*)))
+                        (behaviors-of-type 'circle-collider))
+                    ;; TODO: Add etypecase for other colliders
+                    do (let* ((offset (v- (rigidbody-position (behavior-entity foreign-collider))
+                                          (rigidbody-position)))
+                              (distance (vlength offset))
+                              (total-size (+ (circle-radius this-collider)
+                                             (circle-radius foreign-collider))))
 
-                       ;; Collision detection
-                       (when (< distance total-size)
-                         ;; Collision resolution
-                         (let* ((penetration-depth (- total-size distance))
-                                (normalized-offset (if (= (vlength offset) 0)
-                                                       (vec2 0 1)
-                                                       (v/ offset distance)))
-                                (this-mass (rigidbody-mass))
-                                (foreign-rigidbody (entity-find-behavior (behavior-entity foreign-collider)
-                                                                         'rigidbody))
-                                (foreign-mass (if foreign-rigidbody
-                                                  (rigidbody-mass foreign-rigidbody)
-                                                  0.0)))
-                           (unless (= 0 (+ this-mass foreign-mass))
-                             (let* ((this-inverse-mass (inverse-mass this-mass))
-                                    (this-bounciness (rigidbody-bounciness))
-                                    (foreign-bounciness (if foreign-rigidbody
-                                                            (rigidbody-bounciness foreign-rigidbody)
-                                                            0.0))
-                                    (foreign-inverse-mass (inverse-mass foreign-mass))
-                                    (foreign-velocity (if foreign-rigidbody
-                                                          (rigidbody-velocity foreign-rigidbody)
-                                                          (vec2)))
-                                    (static-friction 0.1)
-                                    (dynamic-friction 1.0)
-                                    (relative-velocity (v- foreign-velocity
-                                                           (rigidbody-velocity)))
-                                    (velocity-along-normal (v. relative-velocity
-                                                               normalized-offset))
-                                    (restitution (min this-bounciness foreign-bounciness))
-                                    (normal-impulse (/ (* (- (+ 1 restitution)) velocity-along-normal)
-                                                       (+ this-inverse-mass
-                                                          foreign-inverse-mass))))
-                               ;; Positional correction
-                               (let* ((percent 0.2)
-                                      (slop 0.01)
-                                      (correction
-                                        (v* normalized-offset
-                                            (* (/ (max (- penetration-depth slop) 0.0) (+ this-inverse-mass
-                                                                                          foreign-inverse-mass))
-                                               percent))))
-                                 (nv- (rigidbody-position)
-                                      (v* correction this-inverse-mass))
-                                 (nv+ (rigidbody-position foreign-rigidbody)
-                                      (v* correction foreign-inverse-mass)))
-                               ;; Don't resolve unless the colliders are moving towards each other
-                               (unless (> velocity-along-normal 0)
-                                 ;; Collision impulse resolution
-                                 (setf (rigidbody-velocity)
-                                       (v- (rigidbody-velocity)
-                                           (v* normalized-offset
-                                               normal-impulse
-                                               this-inverse-mass)))
-                                 (when foreign-rigidbody
-                                   (setf (rigidbody-velocity foreign-rigidbody)
-                                         (v+ (rigidbody-velocity foreign-rigidbody)
-                                             (v* normalized-offset
-                                                 normal-impulse
-                                                 foreign-inverse-mass))))
-                                 (let* ((relative-velocity (v- (if foreign-rigidbody
-                                                                   (rigidbody-velocity foreign-rigidbody)
-                                                                   (vec2))
-                                                               (rigidbody-velocity)))
-                                        (tangent (safe-vscale
-                                                  (v- relative-velocity
-                                                      (v* normalized-offset
-                                                          (v. relative-velocity normalized-offset)))
-                                                  1))
-                                        (tangent-magnitude (/ (- (v. relative-velocity tangent))
-                                                              (+ this-inverse-mass
-                                                                 foreign-inverse-mass)))
-                                        (mu (sqrt (+ (expt static-friction 2) (expt static-friction 2))))
-                                        (friction-impulse (if (< (abs tangent-magnitude) (* normal-impulse mu))
-                                                              (v* tangent tangent-magnitude)
-                                                              (let ((dynamic-friction (sqrt (+ (expt dynamic-friction 2)
-                                                                                               (expt dynamic-friction 2)))))
-                                                                (v* tangent (- (min (* normal-impulse dynamic-friction)
-                                                                                    (abs tangent-magnitude))))))))
-                                   ;; Friction impulse resolution
+                         ;; Collision detection
+                         (when (< distance total-size)
+                           ;; Collision resolution
+                           (let* ((penetration-depth (- total-size distance))
+                                  (normalized-offset (if (= (vlength offset) 0)
+                                                         (vec2 0 1)
+                                                         (v/ offset distance)))
+                                  (this-mass (rigidbody-mass))
+                                  (foreign-rigidbody (entity-find-behavior (behavior-entity foreign-collider)
+                                                                           'rigidbody))
+                                  (foreign-mass (if foreign-rigidbody
+                                                    (rigidbody-mass foreign-rigidbody)
+                                                    0.0)))
+                             (unless (= 0 (+ this-mass foreign-mass))
+                               (let* ((this-inverse-mass (inverse-mass this-mass))
+                                      (this-bounciness (rigidbody-bounciness))
+                                      (foreign-bounciness (if foreign-rigidbody
+                                                              (rigidbody-bounciness foreign-rigidbody)
+                                                              0.0))
+                                      (foreign-inverse-mass (inverse-mass foreign-mass))
+                                      (foreign-velocity (if foreign-rigidbody
+                                                            (rigidbody-velocity foreign-rigidbody)
+                                                            (vec2)))
+                                      (static-friction 0.1)
+                                      (dynamic-friction 1.0)
+                                      (relative-velocity (v- foreign-velocity
+                                                             (rigidbody-velocity)))
+                                      (velocity-along-normal (v. relative-velocity
+                                                                 normalized-offset))
+                                      (restitution (min this-bounciness foreign-bounciness))
+                                      (normal-impulse (/ (* (- (+ 1 restitution)) velocity-along-normal)
+                                                         (+ this-inverse-mass
+                                                            foreign-inverse-mass))))
+                                 ;; Positional correction
+                                 (let* ((percent 0.2)
+                                        (slop 0.01)
+                                        (correction
+                                          (v* normalized-offset
+                                              (* (/ (max (- penetration-depth slop) 0.0) (+ this-inverse-mass
+                                                                                            foreign-inverse-mass))
+                                                 percent))))
+                                   (nv- (rigidbody-position)
+                                        (v* correction this-inverse-mass))
+                                   (nv+ (rigidbody-position foreign-rigidbody)
+                                        (v* correction foreign-inverse-mass)))
+                                 ;; Don't resolve unless the colliders are moving towards each other
+                                 (unless (> velocity-along-normal 0)
+                                   ;; Collision impulse resolution
                                    (setf (rigidbody-velocity)
                                          (v- (rigidbody-velocity)
-                                             (v* friction-impulse this-inverse-mass)))
+                                             (v* normalized-offset
+                                                 normal-impulse
+                                                 this-inverse-mass)))
                                    (when foreign-rigidbody
                                      (setf (rigidbody-velocity foreign-rigidbody)
                                            (v+ (rigidbody-velocity foreign-rigidbody)
-                                               (v* friction-impulse foreign-inverse-mass)))))))))))))
+                                               (v* normalized-offset
+                                                   normal-impulse
+                                                   foreign-inverse-mass))))
+                                   (let* ((relative-velocity (v- (if foreign-rigidbody
+                                                                     (rigidbody-velocity foreign-rigidbody)
+                                                                     (vec2))
+                                                                 (rigidbody-velocity)))
+                                          (tangent (safe-vscale
+                                                    (v- relative-velocity
+                                                        (v* normalized-offset
+                                                            (v. relative-velocity normalized-offset)))
+                                                    1))
+                                          (tangent-magnitude (/ (- (v. relative-velocity tangent))
+                                                                (+ this-inverse-mass
+                                                                   foreign-inverse-mass)))
+                                          (mu (sqrt (+ (expt static-friction 2) (expt static-friction 2))))
+                                          (friction-impulse (if (< (abs tangent-magnitude) (* normal-impulse mu))
+                                                                (v* tangent tangent-magnitude)
+                                                                (let ((dynamic-friction (sqrt (+ (expt dynamic-friction 2)
+                                                                                                 (expt dynamic-friction 2)))))
+                                                                  (v* tangent (- (min (* normal-impulse dynamic-friction)
+                                                                                      (abs tangent-magnitude))))))))
+                                     ;; Friction impulse resolution
+                                     (setf (rigidbody-velocity)
+                                           (v- (rigidbody-velocity)
+                                               (v* friction-impulse this-inverse-mass)))
+                                     (when foreign-rigidbody
+                                       (setf (rigidbody-velocity foreign-rigidbody)
+                                             (v+ (rigidbody-velocity foreign-rigidbody)
+                                                 (v* friction-impulse foreign-inverse-mass)))))))))))))
      ;; Update position
      (setf (rigidbody-position)
            (v+ (rigidbody-position) (rigidbody-velocity)))
