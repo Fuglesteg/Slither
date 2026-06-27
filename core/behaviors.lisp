@@ -68,16 +68,20 @@
                 `(funcall reader ,accessor-form)
                 accessor-form))
        (defun (setf ,accessor-symbol) (new-value &optional (behavior (or *behavior* *entity*)))
-         ,@(when networked
-             `((let ((networked (etypecase behavior
+         ,(when networked
+             `(let ((networked (etypecase behavior
                                   (entity (entity-find-behavior behavior (uiop:find-symbol* :networked :slither/networking/networked)))
                                   (,behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked)))
                                   (behavior (entity-find-behavior (behavior-entity behavior) (uiop:find-symbol* :networked :slither/networking/networked))))))
                  (when networked
-                   (uiop:symbol-call :slither/networking/networked :networked-register-place-change networked ',slot-name ',behavior)))))
-         (setf ,accessor-form ,(if writer
-                                   `(funcall ,writer new-value)
-                                   'new-value))))))
+                   (uiop:symbol-call :slither/networking/networked :networked-register-place-change
+                                     networked
+                                     ',slot-name
+                                     ',behavior))))
+         (setf ,accessor-form
+               ,(if writer
+                    `(funcall ,writer new-value)
+                    'new-value))))))
 
 (defmacro define-behavior-method (behavior name method-arguments &body body)
   `(defun ,name ,method-arguments

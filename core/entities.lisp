@@ -132,19 +132,24 @@
 
 (defgeneric entity-type-id (entity))
 
-(defmacro define-entity-accessor (entity slot-name &key networked)
+(defmacro define-entity-accessor (entity slot-name &key networked reader writer)
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name entity) (symbol-name slot-name)))))
   `(progn
      (defun ,accessor-symbol (&optional (entity *entity*))
-       (slot-value entity ',slot-name))
+       ,(if reader
+            `(funcall reader (slot-value entity ',slot-name))
+            `(slot-value entity ',slot-name)))
      (defun (setf ,accessor-symbol) (new-value &optional (entity *entity*))
-       ,@(when networked
-           `((let ((networked (entity-find-behavior entity 'networked)))
+       ,(when networked
+           `(let ((networked (entity-find-behavior entity 'networked)))
                (when networked
                  (uiop:symbol-call :slither/networking/networked :networked-register-place-change
                                    networked
-                                   ',slot-name)))))
-       (setf (slot-value entity ',slot-name) new-value)))))
+                                   ',slot-name))))
+       (setf (slot-value entity ',slot-name)
+             ,(if writer
+                  `(funcall ,writer new-value)
+                  `new-value))))))
 
 (defmacro define-entity-method (entity name method-arguments &body body)
   (declare (ignore entity))
@@ -171,13 +176,22 @@
                     return key)
               (incf *entity-type-id-counter*))))
     (setf (gethash entity-type-id *entity-type-id-table*) name)
-    (let (slot-symbols clos-slots networked-slots lag-compensated-slots)
+    (let (slot-symbols
+          clos-slots
+          networked-slots
+          lag-compensated-slots
+          (slot-readers (make-hash-table))
+          (slot-writers (make-hash-table)))
       (loop for slot in slots
             do (if (symbolp slot)
                    (progn (push slot slot-symbols)
                           (list slot
                                 :initarg (intern (symbol-name slot) :keyword)))
-                   (destructuring-bind (symbol &key (init nil init-supplied-p) networked) slot
+                   (destructuring-bind (symbol &key (init nil init-supplied-p) networked reader writer) slot
+                     (when reader
+                       (setf (gethash symbol slot-readers) reader))
+                     (when writer
+                       (setf (gethash symbol slot-writers) writer))
                      (when networked
                        (push symbol networked-slots))
                      (when (eq networked :lag-compensation)
@@ -298,7 +312,10 @@
            (defclass ,name (entity)
              ,clos-slots)
            ,@(loop for slot-symbol in slot-symbols
-                   collect `(define-entity-accessor ,name ,slot-symbol :networked ,(not (not (member slot-symbol networked-slots)))))
+                   collect `(define-entity-accessor ,name ,slot-symbol
+                              :networked ,(not (not (member slot-symbol networked-slots)))
+                              :reader ,(gethash slot-symbol slot-readers)
+                              :writer ,(gethash slot-symbol slot-writers)))
            (defmethod entity-type-id ((entity ,name))
              ,entity-type-id)
            (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
