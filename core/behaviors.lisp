@@ -54,6 +54,13 @@
   (declare (special *behavior*))
   (call-next-method))
 
+(defgeneric behavior-create (behavior)
+  (:method ((behavior behavior))))
+
+(defmethod initialize-instance :after ((behavior behavior) &key)
+  (let ((*behavior* behavior))
+    (behavior-create behavior)))
+
 (defmacro define-behavior-accessor (behavior slot-name &key reader writer networked)
   (let ((accessor-symbol (intern (format nil "~a-~a" (symbol-name behavior) (symbol-name slot-name))))
         (accessor-form `(slot-value
@@ -201,6 +208,11 @@
                ((string= keyword-or-symbol :destroy)
                 (push
                  `(defmethod behavior-destroy ((,(gensym) ,name))
+                    ,@arguments)
+                 methods))
+               ((string= keyword-or-symbol :create)
+                (push
+                 `(defmethod behavior-create ((,(gensym) ,name))
                     ,@arguments)
                  methods))
                ((string= keyword-or-symbol :required-behaviors)

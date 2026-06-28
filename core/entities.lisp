@@ -13,8 +13,18 @@
 (defmethod entity-initialize-behaviors ((entity entity))
   (setf (entity-behaviors entity) (entity-make-default-behaviors entity)))
 
-(defmethod initialize-instance :after ((entity entity) &key)
-  (entity-initialize-behaviors entity))
+(defgeneric entity-create (entity)
+  (:method ((entity entity))))
+
+(defmethod initialize-instance :after ((entity entity) &key (behaviors nil behaviors-supplied-p) &allow-other-keys)
+  (cond
+    ((not behaviors-supplied-p)
+     (entity-initialize-behaviors entity))
+    (t
+     (dolist (behavior behaviors)
+       (setf (behavior-entity behavior) entity))))
+  (let ((*entity* entity))
+    (entity-create entity)))
 
 (defgeneric pre-tick (entity)
   (:method ((entity entity)))
@@ -141,7 +151,7 @@
             `(slot-value entity ',slot-name)))
      (defun (setf ,accessor-symbol) (new-value &optional (entity *entity*))
        ,(when networked
-           `(let ((networked (entity-find-behavior entity 'networked)))
+          `(let ((networked (entity-find-behavior entity (uiop:find-symbol* :networked :slither/networking/networked))))
                (when networked
                  (uiop:symbol-call :slither/networking/networked :networked-register-place-change
                                    networked
@@ -300,6 +310,12 @@
                             `(defmethod entity-destroy ((,entity-symbol ,name))
                                ,@arguments))
                           methods))
+                        ((string= keyword :create)
+                         (push
+                          (let ((entity-symbol (gensym)))
+                            `(defmethod entity-create ((,entity-symbol ,name))
+                               ,@arguments))
+                          methods))
                         (t
                          (push
                           (destructuring-bind (method-arguments . body) arguments
@@ -313,7 +329,7 @@
              ,clos-slots)
            ,@(loop for slot-symbol in slot-symbols
                    collect `(define-entity-accessor ,name ,slot-symbol
-                              :networked ,(not (not (member slot-symbol networked-slots)))
+                              :networked ,(member slot-symbol networked-slots)
                               :reader ,(gethash slot-symbol slot-readers)
                               :writer ,(gethash slot-symbol slot-writers)))
            (defmethod entity-type-id ((entity ,name))
@@ -342,7 +358,7 @@
                                        result))
                         (loop for behavior in networked-behavior-symbols
                               append (loop for networked-slot in (behavior-networked-slots behavior)
-                                           do (unless (find (cons behavior networked-slot) behaviors-networked-slots-overrides
+                                           do (unless (find (list behavior networked-slot) behaviors-networked-slots-overrides
                                                             :test 'equal)
                                                 (push (list networked-slot behavior)
                                                       result))))
@@ -395,7 +411,8 @@
                                              ,@(loop for slot-symbol in slots
                                                      for i from 0
                                                      append (list (intern (symbol-name slot-symbol) :keyword)
-                                                                  `(elt arguments ,i))))))
+                                                                  `(elt arguments ,i)))
+                                             :behaviors nil)))
                                (declare (ignorable arguments))
                                (setf (entity-behaviors entity)
                                      (list ,@(loop for behavior-symbol in behaviors
