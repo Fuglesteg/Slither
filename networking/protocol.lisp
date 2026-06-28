@@ -57,13 +57,25 @@
      (make-array 1
                  :element-type '(unsigned-byte 8)
                  :initial-contents #(1)))
+    (:entity
+     (destructuring-bind (networked-object-id entity) arguments
+       (let* ((encoded-entity (entity-encode entity))
+              (packet-length (+ (length encoded-entity) 2 2))
+              (entity-id (entity-type-id entity)))
+         (with-vector-writer (make-octet-vector (+ packet-length 3)) (:write-integer packet-write-byte
+                                                                      :write-sequence packet-write-sequence)
+           (packet-write-byte 2 :bytes 1)
+           (packet-write-byte packet-length :bytes 2)
+           (packet-write-byte networked-object-id :bytes 2)
+           (packet-write-byte entity-id :bytes 2)
+           (packet-write-sequence encoded-entity)))))
     (:update
      (destructuring-bind (networked-object-id place-id new-value) arguments
        (let* ((encoded-argument (encode-argument new-value))
               (packet-length (+ (length encoded-argument) 2 2)))
          (with-vector-writer (make-octet-vector (+ packet-length 3)) (:write-integer packet-write-byte
                                                                       :write-sequence packet-write-sequence)
-           (packet-write-byte 2 :bytes 1)
+           (packet-write-byte 3 :bytes 1)
            (packet-write-byte packet-length :bytes 2)
            (packet-write-byte networked-object-id :bytes 2)
            (packet-write-byte place-id :bytes 2)
@@ -74,23 +86,12 @@
               (packet-length (+ (length encoded-arguments) 2 2)))
          (with-vector-writer (make-octet-vector (+ packet-length 3)) (:write-integer packet-write-byte
                                                                       :write-sequence packet-write-sequence)
-           (packet-write-byte 3 :bytes 1)
+           (packet-write-byte 4 :bytes 1)
            (packet-write-byte packet-length :bytes 2)
            (packet-write-byte networked-object-id :bytes 2)
            (packet-write-byte action-id :bytes 2)
            (packet-write-sequence encoded-arguments)))))
-    (:entity
-     (destructuring-bind (networked-object-id entity) arguments
-       (let* ((encoded-entity (entity-encode entity))
-              (packet-length (+ (length encoded-entity) 2 2))
-              (entity-id (entity-type-id entity)))
-         (with-vector-writer (make-octet-vector (+ packet-length 3)) (:write-integer packet-write-byte
-                                                                      :write-sequence packet-write-sequence)
-           (packet-write-byte 4 :bytes 1)
-           (packet-write-byte packet-length :bytes 2)
-           (packet-write-byte networked-object-id :bytes 2)
-           (packet-write-byte entity-id :bytes 2)
-           (packet-write-sequence encoded-entity)))))
+
     (:input
      (destructuring-bind (tick inputs) arguments
        (let ((encoded-inputs (encode-inputs inputs)))
@@ -140,6 +141,18 @@
       (2
        (let* ((packet-length (packet-read-bytes 2))
               (networked-object-id (packet-read-bytes 2))
+              (entity-type-id (packet-read-bytes 2))
+              (entity (entity-decode entity-type-id (packet-read-sequence (- packet-length 4)))))
+         (declare (ignore networked-object-id))
+         (values
+          (list
+           :entity
+           entity-type-id
+           entity)
+          (+ packet-length 3))))
+      (3
+       (let* ((packet-length (packet-read-bytes 2))
+              (networked-object-id (packet-read-bytes 2))
               (place-id (packet-read-bytes 2))
               (new-value (decode-argument (packet-read-sequence (- packet-length 4)))))
          (values (list
@@ -148,7 +161,7 @@
                   place-id
                   new-value)
                  (+ 3 packet-length))))
-      (3
+      (4
        (let* ((packet-length (packet-read-bytes 2))
               (networked-object-id (packet-read-bytes 2))
               (action-id (packet-read-bytes 2))
@@ -160,18 +173,7 @@
            action-id
            arguments)
           (+ packet-length 3))))
-      (4
-       (let* ((packet-length (packet-read-bytes 2))
-              (networked-object-id (packet-read-bytes 2))
-              (entity-type-id (packet-read-bytes 2))
-              (entity (entity-decode entity-type-id (packet-read-sequence (- packet-length 4)))))
-         (declare (ignore networked-object-id))
-         (values
-          (list
-           :entity
-           entity-type-id
-           entity)
-          (+ packet-length 3))))
+
       (5
        (let* ((tick (packet-read-bytes 4))
               (packet-length (packet-read-bytes 2))

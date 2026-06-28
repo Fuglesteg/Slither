@@ -77,10 +77,11 @@
   (setf *on-add-networked* new-value))
 
 (defun add-networked (networked)
-  (on-add-networked networked)
-  (setf (gethash (networked-id networked)
-                 (networked-objects))
-        networked))
+  (unless (gethash (networked-id networked)
+                   (networked-objects))
+    (setf (gethash (networked-id networked)
+                   (networked-objects))
+          networked)))
 
 (defmethod scene-make-networked ((scene scene))
   (setf (scene-value scene 'networked)
@@ -106,13 +107,14 @@
      ;; Client prediction
      (last-tick-update :init 0)
      (needs-simulation :init (progn nil))
-     (simulated-inputs)
+     (simulated-inputs :init (copy-inputs slither/input::*inputs*))
      (updated-places :init (progn nil)))
   (:networked t)
-  (:start
-   (setf (networked-simulated-inputs) (copy-inputs slither/input::*inputs*))
+  (:create
    (when (networked-objects)
-     (add-networked *behavior*))
+     (add-networked *behavior*)))
+  (:start
+   (on-add-networked *behavior*)
    (when (and (eq (networked-mode) :owned)
               (serverp))
      (setf (networked-lag-compensated-slots)
@@ -150,7 +152,7 @@
      (remove-networked *behavior*))))
 
 (defun networked-rewind-to-tick (networked tick)
-  (let ((index (- (current-tick) tick)))
+  (let ((index (min +lag-compensation-history-size+ (- (current-tick) tick))))
     (do-hash-table (slot history-buffer (networked-lag-compensated-slots networked))
       (etypecase slot
         (cons (destructuring-bind (behavior . slot) slot

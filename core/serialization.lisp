@@ -86,8 +86,8 @@
               (loop for char across argument
                     do (argument-write-byte (char-code char) :bytes 1))))
     (entity (with-vector-writer (make-octet-vector 3) (:write-integer argument-write-byte)
-                           (argument-write-byte 7 :bytes 1)
-                           (argument-write-byte (uiop:symbol-call :slither/networking/networked :networked-id argument) :bytes 2)))
+              (argument-write-byte 7 :bytes 1)
+              (argument-write-byte (uiop:symbol-call :slither/networking/networked :networked-id argument) :bytes 2)))
     (cons (let* ((encoded-arguments (cons (encode-argument (car argument))
                                           (encode-argument (cdr argument))))
                  (total-length (+ (length (car encoded-arguments))
@@ -141,8 +141,11 @@
                 (8 (multiple-value-bind (inner-parsed-argument inner-bytes-read) (decode-argument argument-vector)
                      (incf bytes-read inner-bytes-read)
                      (setf argument-vector (subseq argument-vector inner-bytes-read))
-                     (cons inner-parsed-argument
-                           (decode-argument argument-vector))))
+                     (multiple-value-bind (rest-parsed-argument rest-bytes-read)
+                         (decode-argument argument-vector)
+                       (incf bytes-read rest-bytes-read)
+                       (cons inner-parsed-argument
+                             rest-parsed-argument))))
                 (9 nil)
                 (10 t))))
         (values parsed-argument

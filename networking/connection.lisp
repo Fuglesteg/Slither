@@ -104,6 +104,10 @@
 (defmethod connection-flush ((connection connection))
   (let ((subpackets (connection-outbound-subpackets connection))
         (packet-counter 0))
+    (setf subpackets (sort subpackets
+                           (lambda (packet1 packet2)
+                             (< (aref packet1 0)
+                                (aref packet2 0)))))
     (loop while (< 0 (length subpackets))
           do (multiple-value-bind (packet subpackets-used)
                  (make-packet :header (connection-make-packet-header connection)

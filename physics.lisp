@@ -78,8 +78,7 @@
      (velocity :init (vec2)
                :networked :lag-compensation)
      (position :init (vec2)
-               :networked :lag-compensation
-               :networked-overrides ((transform position))))
+               :networked :lag-compensation))
   (:networked t)
   (:required-behaviors
    transform)
