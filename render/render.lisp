@@ -66,7 +66,8 @@
            #:shader-program
            :ui-color-shader-program
            :screen-space-rotation-direction
-           :screen-space-rotation))
+           :screen-space-rotation
+           :screen-space-world-position))
 
 (in-package #:slither/render)
 
@@ -273,6 +274,11 @@
   (eval-on-init)
   (gl:enable :blend)
   (gl:blend-func :src-alpha :one-minus-src-alpha))
+
+(defun screen-space-world-position (vector)
+  (if (= 0 (mdet *view-matrix*))
+      vector
+      (m* (minv *view-matrix*) vector)))
 
 (defun screen-space-position (vector)
   (if (= 0 (mdet *view-matrix*))
