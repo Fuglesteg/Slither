@@ -42,15 +42,15 @@
     :type (function (shader-program drawcall-data)))
    (vertex-shader
     :initarg :vertex-shader
-    :accessor vertex-shader
+    :accessor shader-program-vertex-shader
     :type shader)
    (fragment-shader
     :initarg :fragment-shader
-    :accessor fragment-shader
+    :accessor shader-program-fragment-shader
     :type shader)
    (uniforms
     :initarg :uniforms
-    :accessor uniforms
+    :accessor shader-program-uniforms
     :initform '()
     :type list)))
 
@@ -105,7 +105,7 @@
      (program-unbind)))
 
 (defmethod get-uniform ((program shader-program) (uniform-symbol symbol))
-  (find uniform-symbol (uniforms program)
+  (find uniform-symbol (shader-program-uniforms program)
         :key #'uniform-symbol
         :test #'string=))
 
@@ -121,7 +121,7 @@
     #+dev (unless (program-linked-successfully-p program)
             (error "Shader program failed to link:~%~a"
                    (gl:get-program-info-log id)))
-    (loop for uniform in (uniforms program)
+    (loop for uniform in (shader-program-uniforms program)
           do (setf (uniform-location uniform)
                    (shader-program-uniform-location program
                                                     (uniform-symbol uniform))))))
@@ -153,15 +153,31 @@
                  :symbol uniform-symbol
                  :location (shader-program-uniform-location program uniform-symbol)))
 
-(defun make-shader-program (&key vertex-shader fragment-shader uniform-symbols on-bind on-render)
+(defun make-shader-program (&key (vertex-shader nil) (fragment-shader nil) (uniform-symbols nil) (on-bind nil) (on-render nil) (extends nil))
   (let ((shader-program (make-instance 'shader-program
-                                       :vertex-shader vertex-shader
-                                       :fragment-shader fragment-shader
-                                       :on-bind on-bind
-                                       :on-render on-render)))
-    (setf (uniforms shader-program)
-          (mapcar
-           (lambda (uniform-symbol)
-             (make-uniform shader-program uniform-symbol))
-           uniform-symbols))
+                                       :vertex-shader (if (and extends
+                                                               (null vertex-shader))
+                                                          (shader-program-vertex-shader extends)
+                                                          vertex-shader)
+                                       :fragment-shader (if (and extends
+                                                                 (null fragment-shader))
+                                                            (shader-program-fragment-shader extends)
+                                                            fragment-shader)
+                                       :on-bind (if (and extends
+                                                         (null on-bind))
+                                                    (shader-program-on-bind extends)
+                                                    on-bind)
+                                       :on-render (if (and extends
+                                                           (null on-render))
+                                                      (shader-program-on-render extends)
+                                                      on-render))))
+    (if (and extends
+             (null uniform-symbols))
+        (setf (shader-program-uniforms shader-program)
+              (shader-program-uniforms extends))
+        (setf (shader-program-uniforms shader-program)
+              (mapcar
+               (lambda (uniform-symbol)
+                 (make-uniform shader-program uniform-symbol))
+               uniform-symbols)))
     shader-program))

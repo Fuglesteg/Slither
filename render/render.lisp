@@ -64,10 +64,10 @@
            #:screen-space-vertex-shader
            #:ui-array-texture-shader-program
            #:shader-program
-           :ui-color-shader-program
-           :screen-space-rotation-direction
-           :screen-space-rotation
-           :screen-space-world-position))
+           #:ui-color-shader-program
+           #:screen-space-rotation-direction
+           #:screen-space-rotation
+           #:screen-space-world-position))
 
 (in-package #:slither/render)
 
@@ -108,7 +108,8 @@
                                              fragment-shader
                                              uniforms
                                              on-bind
-                                             on-render)
+                                             on-render
+                                             (extends nil))
     `(progn
        (defvar ,name nil)
        (delay-evaluation
@@ -116,7 +117,8 @@
                                           :fragment-shader ,fragment-shader
                                           :uniform-symbols ,uniforms
                                           :on-bind ,on-bind
-                                          :on-render ,on-render)))))
+                                          :on-render ,on-render
+                                          :extends ,extends)))))
 
   (defmacro define-vertex-array-object (name &body body)
     `(progn
