@@ -320,13 +320,13 @@
   (declare (type anchor anchor))
   (when *initialized*
     (let ((position (position-apply-anchor position size anchor)))
-    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                   :vao vao
-                                                   :depth depth
-                                                   :layer layer)
-                  :model-matrix (nm* (mtranslation position)
-                                     (mscaling size))
-                  :color color))))
+      (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                     :vao vao
+                                                     :depth depth
+                                                     :layer layer)
+                    :model-matrix (nm* (mtranslation position)
+                                       (mscaling size))
+                    :color color))))
 
 (defun draw-circle (position size color &key (shader-program circle-shader-program)
                                              (vao texture-vertex-array)
