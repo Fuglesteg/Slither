@@ -182,13 +182,13 @@
     (string (intern symbol))))
 
 (deftype anchor ()
-  '(member :middle :top :right :left :bottom
+  '(member :center :top :right :left :bottom
     :top-left :top-right :bottom-left :bottom-right))
 
 (-> position-apply-anchor (vec2 vec2 anchor) vec2)
 (defun position-apply-anchor (position size anchor)
   (ecase anchor
-    (:middle position)
+    (:center position)
     (:top (v- position (vec2 0
                              (vy size))))
     (:right (v- position (vec2 (vx size)

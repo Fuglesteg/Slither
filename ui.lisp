@@ -11,7 +11,11 @@
            :ui-draw-button
            :button
            :text-input
-           :ui-draw-rectangle))
+           :ui-draw-rectangle
+           :box
+           :image
+           :text
+           :ui-layout))
 
 (in-package :slither/ui)
 
@@ -78,38 +82,48 @@
                (:size vec2)
                (:shader-program shader-program)
                (:layer integer)
-               (:depth integer)))
+               (:depth integer)
+               (:anchor anchor)))
 (defun draw-text (text position &key (rotation 0)
                                      (size (vec2 0.1))
                                      (shader-program array-texture-shader-program)
                                      (layer 0)
-                                     (depth 0))
+                                     (depth 0)
+                                     (anchor :top-left))
   (declare (type vec2 position)
            (type string text)
            (type number rotation)
            (type vec2 size))
   (let* ((radians (degrees->radians rotation))
          (cos-r (cos radians))
-         (sin-r (sin radians)))
+         (sin-r (sin radians))
+         (row 0)
+         (column 0))
     (loop for char across text
-          for i from 0
-          do (unless (char= char #\Space)
-               (let* ((offset (calculate-text-offset i :character-size size))
-                      (rotated-offset (vec2 (- (* (vx offset) cos-r)
-                                               (* (vy offset) sin-r))
-                                            (+ (* (vx offset) sin-r)
-                                               (* (vy offset) cos-r)))))
-                 (draw-array-texture (v+ position rotated-offset)
-                                     size
-                                     (char->font-index char)
-                                     font
-                                     :color (vec4 1.0 1.0 1.0 1.0)
-                                     :rotation rotation
-                                     :layer layer
-                                     :depth depth
-                                     :shader-program shader-program))))))
+          do (cond
+               ((char= char #\Newline)
+                (incf row)
+                (setf column 0))
+               ((char= char #\Space)
+                (incf column))
+               (t (let* ((offset (v* (vec2 column (- (* row 1.6))) size))
+                         (rotated-offset (vec2 (- (* (vx offset) cos-r)
+                                                  (* (vy offset) sin-r))
+                                               (+ (* (vx offset) sin-r)
+                                                  (* (vy offset) cos-r)))))
+                    (draw-array-texture (v+ position rotated-offset)
+                                        size
+                                        (char->font-index char)
+                                        font
+                                        :color (vec4 1.0 1.0 1.0 1.0)
+                                        :rotation rotation
+                                        :layer layer
+                                        :depth depth
+                                        :shader-program shader-program
+                                        :anchor anchor)
+                    (incf column)))))))
 
-(defun calculate-text-offset (text-index &key (row-length 30) (character-size (vec2 0.02)))
+(defun calculate-text-offset (text-index &key (row-length 30) (character-size (vec2 2.0)))
   (with-vec (character-width character-height) character-size
     (let ((whitespace character-width))
       (vec2 (* whitespace (mod text-index row-length))
@@ -121,21 +135,22 @@
 (-> ui-draw-text (string vec2 &key
                          (:size vec2)
                          (:layer integer)
-                         (:depth integer)))
+                         (:depth integer)
+                         (:anchor anchor)))
 (defun ui-draw-text (text position &key (size (vec2 0.1))
-                                        (layer 0)
-                                        (depth 0))
+                                        (layer 2)
+                                        (depth 0)
+                                        (anchor :top-left))
   (declare (type vec2 position size)
            (type string text))
   (draw-text text
              position
              :rotation 0
-             :size (with-vec (width height) size
-                     (vec2 (/ width (aspect-ratio))
-                           height))
+             :size size
              :depth depth
              :layer layer
-             :shader-program ui-array-texture-shader-program))
+             :shader-program ui-array-texture-shader-program
+             :anchor anchor))
 
 (defun ui-calculate-text-offset (text-index &key (row-length 30) (character-size (vec2 0.02)))
   (calculate-text-offset text-index
@@ -372,6 +387,7 @@
                           (padding-top 0.0) (padding-bottom 0.0)
                           (child-gap 0.0)
                           (background-color (vec4 0.1 0.3 0.1 0.0))
+                          (layout-direction :left-to-right)
                           ,@parameters)
                     &body children)
      ,(alexandria:with-gensyms (ui-element)
@@ -381,6 +397,10 @@
                                :size 0.0
                                :min 0.0
                                :max most-positive-single-float))
+                   (keyword (list :size-type size-definition
+                                  :size 0.0
+                                  :min 0.0
+                                  :max most-positive-single-float))
                    (number (list :size size-definition
                                  :min size-definition
                                  :max size-definition
@@ -403,6 +423,7 @@
                  (height-max (getf height-size-definition :max)))
             `(let ((,',ui-element
                       (make-ui-element :type ,,type
+                                       :layout-direction ,layout-direction
                                        :x ,x
                                        :y ,y
                                        :width ,width
@@ -419,7 +440,7 @@
                                        :padding-bottom ,padding-bottom
                                        :background-color ,background-color
                                        :child-gap ,child-gap
-                                       :children (list ,@children)
+                                       :children (alexandria:flatten (list ,@children))
                                        ,,@(loop for parameter in parameters
                                                 append (let ((parameter-symbol
                                                                (etypecase parameter
@@ -455,7 +476,7 @@
 
 (define-ui-element image :image)
 
-(defun calculate-layout (root-ui-element)
+(defun ui-element-calculate-layout (root-ui-element)
   ; Main algorithm based on Clay, See: https://github.com/nicbarker/clay
   (let ((children-first-sorted-layout
           (labels ((sort-by-child-first-order (ui-element)
@@ -474,8 +495,10 @@
                (ui-element-padding-right ui-element)))
       (let ((total-child-gap (* (1- (length (ui-element-children ui-element)))
                                 (ui-element-child-gap ui-element))))
-        (incf (ui-element-width ui-element)
-              total-child-gap)
+        (when (eq (ui-element-layout-direction ui-element)
+                  :left-to-right)
+          (incf (ui-element-width ui-element)
+                total-child-gap)))
         (when-let ((parent (ui-element-parent ui-element)))
           (when (eq (ui-element-width-size-type parent)
                     :fit)
@@ -483,7 +506,8 @@
               (:left-to-right
                (setf (ui-element-width parent)
                      (min (ui-element-width-max parent)
-                          (+ (ui-element-width parent) (ui-element-width ui-element))))
+                          (+ (ui-element-width parent)
+                             (ui-element-width ui-element))))
                (incf (ui-element-width-min parent)
                      (ui-element-width-min ui-element)))
               (:top-to-bottom
@@ -495,7 +519,7 @@
                (setf (ui-element-width-min parent)
                      (max
                       (ui-element-width-min ui-element)
-                      (ui-element-width-min parent)))))))))
+                      (ui-element-width-min parent))))))))
     ; 2. Grow & Shrink widths
     (labels ((grow-child-widths (element)
                (when (ui-element-children element)
@@ -545,7 +569,7 @@
                                                                previous-width))))))))
                    ; Shrink
                    (when growables
-                     (loop while (> 0 remaining-width)
+                     (loop while (and growables (> 0 remaining-width))
                            do (let ((largest-width (ui-element-width (first growables)))
                                     (second-largest-width 0)
                                     (width-to-add remaining-width))
@@ -583,7 +607,7 @@
                (when (eq (ui-element-type ui-element)
                          :text)
                  (let ((characters-per-line (floor (/ (ui-element-width ui-element)
-                                                      (ui-element-text-size ui-element))))
+                                                      (/ (ui-element-text-size ui-element) 2))))
                        (separator #\Space)
                        (last-separator-index nil)
                        (current-width 0))
@@ -598,7 +622,8 @@
                                (setf current-width (- i last-separator-index))
                                (setf last-separator-index nil))
                               ((char= char separator)
-                               (setf last-separator-index i))
+                               (setf last-separator-index i)
+                               (incf current-width))
                               ((char= char #\Newline)
                                (setf current-width 0))
                               (t
@@ -612,8 +637,14 @@
             (+ (ui-element-padding-top ui-element)
                (ui-element-padding-bottom ui-element)))
       (when-let ((parent (ui-element-parent ui-element)))
-        (let ((total-child-gap (* (1- (length (ui-element-children parent)))
-                                  (ui-element-child-gap parent))))
+        (when (eq (ui-element-height-size-type parent)
+                  :fit)
+          (let ((total-child-gap (* (1- (length (ui-element-children parent)))
+                                    (ui-element-child-gap parent))))
+            (when (eq (ui-element-layout-direction ui-element)
+                      :top-to-bottom)
+              (incf (ui-element-height ui-element)
+                    total-child-gap)))
           (case (ui-element-layout-direction parent)
             (:left-to-right
              (setf (ui-element-height parent)
@@ -626,10 +657,9 @@
                     (ui-element-height-min parent)
                     (ui-element-height-min ui-element))))
             (:top-to-bottom
-             (incf (ui-element-height ui-element)
-                   total-child-gap)
+
              (setf (ui-element-height parent)
-                   (max
+                   (min
                     (ui-element-height-max parent)
                     (+ (ui-element-height parent)
                        (ui-element-height ui-element))))
@@ -638,6 +668,85 @@
     ; 5. Grow heights
     (labels ((grow-child-heights (element)
                (when (ui-element-children element)
+                 (let ((remaining-height (- (ui-element-height element)
+                                           (ui-element-padding-top element)
+                                           (ui-element-padding-bottom element)
+                                           (loop for child in (ui-element-children element)
+                                                 sum (ui-element-height child))
+                                           (* (1- (length (ui-element-children element)))
+                                              (ui-element-child-gap element))))
+                       (growables (remove-if-not
+                                   (lambda (element)
+                                     (eq (ui-element-height-size-type element)
+                                         :grow))
+                                   (ui-element-children element))))
+                   ; Grow
+                   (when growables
+                     (loop while (< 0 remaining-height)
+                           do (let ((smallest-height (ui-element-height (first growables)))
+                                    (second-smallest-height most-positive-single-float)
+                                    (height-to-add remaining-height))
+                                (dolist (child growables)
+                                  (when (< (ui-element-height child) smallest-height)
+                                    (setf second-smallest-height smallest-height)
+                                    (setf smallest-height (ui-element-height child)))
+                                  (when (> (ui-element-height child) smallest-height)
+                                    (setf second-smallest-height
+                                          (min (ui-element-height child)
+                                               second-smallest-height))
+                                    (setf height-to-add (- second-smallest-height
+                                                          smallest-height))))
+                                (setf height-to-add (min height-to-add
+                                                        (/ remaining-height
+                                                           (length growables))))
+                                (dolist (child growables)
+                                  (let ((previous-height (ui-element-height child)))
+                                    (when (= (ui-element-height child)
+                                             smallest-height)
+                                      (incf (ui-element-height child)
+                                            height-to-add)
+                                      (when (>= (ui-element-height child)
+                                                (ui-element-height-max child))
+                                        (setf (ui-element-height child)
+                                              (ui-element-height-max child))
+                                        (setf growables (remove child growables)))
+                                      (decf remaining-height (- (ui-element-height child)
+                                                               previous-height))))))))
+                   ; Shrink
+                   (when growables
+                     (loop while (and growables (> 0 remaining-height))
+                           do (let ((largest-height (ui-element-height (first growables)))
+                                    (second-largest-height 0)
+                                    (height-to-add remaining-height))
+                                (dolist (child growables)
+                                  (when (> (ui-element-height child) largest-height)
+                                    (setf second-largest-height largest-height)
+                                    (setf largest-height (ui-element-height child)))
+                                  (when (< (ui-element-height child) largest-height)
+                                    (setf second-largest-height
+                                          (max (ui-element-height child)
+                                               second-largest-height))
+                                    (setf height-to-add (- second-largest-height
+                                                          largest-height))))
+                                (setf height-to-add (max height-to-add
+                                                        (/ remaining-height
+                                                           (length growables))))
+                                (dolist (child growables)
+                                  (let ((previous-height (ui-element-height child)))
+                                    (when (= (ui-element-height child)
+                                             largest-height)
+                                      (incf (ui-element-height child)
+                                            height-to-add)
+                                      (when (<= (ui-element-height child)
+                                                (ui-element-height-min child))
+                                        (setf (ui-element-height child)
+                                              (ui-element-height-min child))
+                                        (setf growables (remove child growables)))
+                                      (decf remaining-height (- (ui-element-height child)
+                                                               previous-height)))))))))
+                 (dolist (child (ui-element-children element))
+                   (grow-child-heights child)))
+               #+nil(when (ui-element-children element)
                  (let ((remaining-height (- (ui-element-height element)
                                             (ui-element-padding-top element)
                                             (ui-element-padding-bottom element))))
@@ -650,12 +759,34 @@
       (grow-child-heights root-ui-element))
     ; 6. Positions & Alignments
     (labels ((position-children (parent)
-               (let ((left-offset (ui-element-padding-left parent)))
+               (let* ((left-to-right (eq (ui-element-layout-direction parent)
+                                         :left-to-right))
+                      (offset (if left-to-right
+                                  (ui-element-padding-left parent)
+                                  (ui-element-padding-top parent))))
                  (dolist (child (ui-element-children parent))
-                   (setf (ui-element-x child) (+ (ui-element-x parent) (* left-offset 2)))
-                   (setf (ui-element-y child) (- (ui-element-y parent) (* (ui-element-padding-top parent) 2)))
-                   (incf left-offset (+ (ui-element-width child)
-                                        (ui-element-child-gap parent)))
+                   (let ((position-along-axis (+ (if left-to-right
+                                                     (ui-element-x parent)
+                                                     (ui-element-y parent))
+                                                 (* offset 2)))
+                         (position-across-axis (+ (if left-to-right
+                                                      (ui-element-y parent)
+                                                      (ui-element-x parent))
+                                                  (* (if left-to-right
+                                                         (ui-element-padding-top parent)
+                                                         (ui-element-padding-left parent))
+                                                     2))))
+                     (cond
+                       (left-to-right
+                        (setf (ui-element-x child) position-along-axis)
+                        (setf (ui-element-y child) position-across-axis))
+                       (t ; top-to-bottom
+                        (setf (ui-element-y child) position-along-axis)
+                        (setf (ui-element-x child) position-across-axis))))
+                   (incf offset (+ (if left-to-right
+                                       (ui-element-width child)
+                                       (ui-element-height child))
+                                   (ui-element-child-gap parent)))
                    (position-children child)))))
       (position-children root-ui-element))
     root-ui-element))
@@ -664,17 +795,29 @@
   (ecase (ui-element-type ui-element)
     (:box
         (ui-draw-rectangle (vec2 (ui-element-x ui-element)
-                              (ui-element-y ui-element))
-                        (vec2 (ui-element-width ui-element)
-                              (ui-element-height ui-element))
-                        :color (ui-element-background-color ui-element)
-                        :anchor :top-left
-                        :depth sort-index))
+                                 (- (ui-element-y ui-element)))
+                           (vec2 (ui-element-width ui-element)
+                                 (ui-element-height ui-element))
+                           :color (ui-element-background-color ui-element)
+                           :anchor :top-left
+                           :depth sort-index))
     (:text
         (ui-draw-text (ui-element-text-content ui-element)
                       (vec2 (ui-element-x ui-element)
-                            (ui-element-y ui-element))
-                      :depth sort-index)))
+                            (- (ui-element-y ui-element)))
+                      :size (vec2 (ui-element-text-size ui-element))
+                      :anchor :top
+                      :depth (1+ sort-index))))
   (incf sort-index)
   (dolist (child (ui-element-children ui-element))
     (ui-element-draw child sort-index)))
+
+(defvar *ui-arena* (sb-vm:new-arena (* 16 1024 1024))) ; 16 MBs
+
+(defmacro ui-layout (&body body)
+  `(unwind-protect
+     (sb-vm:with-arena (*ui-arena*)
+       (ui-element-draw
+        (ui-element-calculate-layout
+         ,@body)))
+     (sb-vm:rewind-arena *ui-arena*)))

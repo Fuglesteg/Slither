@@ -170,7 +170,6 @@
               (declare (ignore c))
               *view-matrix*)))))
 
-
 (define-vertex-shader static-vertex-shader :path (asdf:system-relative-pathname :slither "./render/shaders/static.vert"))
 (define-fragment-shader color-fragment-shader :path (asdf:system-relative-pathname :slither "./render/shaders/color.frag"))
 
@@ -247,22 +246,39 @@
 (define-vertex-shader screen-space-texture-vertex-shader
   :path (asdf:system-relative-pathname :slither "./render/shaders/screen-space-texture.vert"))
 
+(defvar *ui-view-matrix* (mat3))
+
+(defun ui-view-matrix-update ()
+  (setf *ui-view-matrix*
+        (nm*
+         (mtranslation (vec2 -1.0 1.0))
+         (mscaling (vec2 (/ 1 1000 (slither/window:aspect-ratio))
+                         (/ 1 1000))))))
+
 (define-shader-program ui-array-texture-shader-program
-  :vertex-shader screen-space-texture-vertex-shader
+  :vertex-shader texture-vertex-shader
   :fragment-shader array-texture-fragment-shader
   :uniforms '(model-matrix
               texture-index
-              color)
+              color
+              view-matrix)
+  :on-bind (lambda (program)
+             (ui-view-matrix-update)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*))
   :on-render (lambda (program drawcall-data)
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
                      (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data)
                      (uniform-value (get-uniform program 'texture-index)) (drawcall-data-texture-index drawcall-data))))
 
 (define-shader-program ui-color-shader-program
-  :vertex-shader screen-space-vertex-shader
+  :vertex-shader world-space-vertex-shader
   :fragment-shader color-fragment-shader
   :uniforms '(model-matrix
-              color)
+              color
+              view-matrix)
+  :on-bind (lambda (program)
+             (ui-view-matrix-update)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*))
   :on-render (lambda (program drawcall-data)
                (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
                      (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data))))
@@ -316,7 +332,7 @@
                                                 (vao quad-vertex-array)
                                                 (layer 0)
                                                 (depth 0)
-                                                (anchor :middle))
+                                                (anchor :center))
   (declare (type anchor anchor))
   (when *initialized*
     (let ((position (position-apply-anchor position size anchor)))
@@ -358,36 +374,40 @@
                                                 (texture-scale (vec2 1.0 1.0))
                                                 (color (vec4 1.0 1.0 1.0 1.0))
                                                 (layer 0)
-                                                (depth 0))
+                                                (depth 0)
+                                                (anchor :center))
   (when *initialized*
-    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                   :vao vao
-                                                   :texture-id (texture-id texture)
-                                                   :layer layer
-                                                   :depth depth)
-                  :model-matrix (nm* (mtranslation position)
-                                     (m3rotate rotation)
-                                     (mscaling size))
-                  :texture-scale texture-scale
-                  :color color)))
+    (let ((position (position-apply-anchor position size anchor)))
+      (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                     :vao vao
+                                                     :texture-id (texture-id texture)
+                                                     :layer layer
+                                                     :depth depth)
+                    :model-matrix (nm* (mtranslation position)
+                                       (m3rotate rotation)
+                                       (mscaling size))
+                    :texture-scale texture-scale
+                    :color color))))
 
 (defun draw-array-texture (position size index array-texture &key (rotation 0)
                                                                   (shader-program array-texture-shader-program)
                                                                   (vao texture-vertex-array)
                                                                   (color (vec4 1.0))
                                                                   (layer 0)
-                                                                  (depth 0))
+                                                                  (depth 0)
+                                                                  (anchor :center))
   (when *initialized*
-    (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
-                                                   :vao vao
-                                                   :array-texture-id (slither/render/array-texture::array-texture-id array-texture)
-                                                   :layer layer
-                                                   :depth depth)
-                  :model-matrix (nm* (mtranslation position)
-                                     (m3rotate rotation)
-                                     (mscaling size))
-                  :texture-index index
-                  :color color)))
+    (let ((position (position-apply-anchor position size anchor)))
+      (add-drawcall :drawcall-key (make-drawcall-key :shader-program-id (shader-program-id shader-program)
+                                                     :vao vao
+                                                     :array-texture-id (slither/render/array-texture::array-texture-id array-texture)
+                                                     :layer layer
+                                                     :depth depth)
+                    :model-matrix (nm* (mtranslation position)
+                                       (m3rotate rotation)
+                                       (mscaling size))
+                    :texture-index index
+                    :color color))))
 
 (defconstant +unset-uniform-id+ 1024)
 
