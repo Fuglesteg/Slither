@@ -111,13 +111,6 @@
 (defun (setf scene-value) (new-value scene key)
   (setf (gethash key (slot-value scene 'values)) new-value))
 
-(defun update-ui-state ()
-  (let ((mouse-position (slither/input:mouse-position)))
-    (ui-register-pointer-state (vx mouse-position) (vy mouse-position)
-                               (slither/input:key-pressed-p :left-click)
-                               (slither/input:key-pressed-p :right-click))
-    (ui-register-keys slither/input::*keys*)))
-
 (defmethod tick :before ((scene scene))
   (fixed-tick scene)
   (ui-layout-render)
@@ -130,6 +123,7 @@
         do (incf (current-tick))
            (inputs-update)
            (input-history-record)
+           (ui-layout-update)
            (call-next-method)
            (let ((slither/core::*delta-time* (tick-delta)))
              (fixed-update-entities))

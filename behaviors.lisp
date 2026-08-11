@@ -130,23 +130,25 @@
      (layer :init 1))
   (:required-behaviors transform)
   (:tick
-   (let ((render-transform (entity-find-behavior *entity* 'render-transform)))
-     (draw-texture (if render-transform
-                       (render-transform-position)
-                       (transform-position))
-                   ;; Scale transform-size by the dimensions of the texture
-                   (let* ((width (texture-width (sprite-texture)))
-                          (height (texture-height (sprite-texture)))
-                          (sum (+ height width)))
-                     (v* (transform-size)
-                         (vec2 (/ sum height 2)
-                               (/ sum width 2))))
-                   (sprite-texture)
-                   :rotation (if render-transform
-                                 (render-transform-rotation)
-                                 (transform-rotation))
-                   :depth (sprite-depth)
-                   :layer (sprite-layer)))))
+   (when (or (clientp)
+             (null (networking-environment)))
+     (let ((render-transform (entity-find-behavior *entity* 'render-transform)))
+       (draw-texture (if render-transform
+                         (render-transform-position)
+                         (transform-position))
+                     ;; Scale transform-size by the dimensions of the texture
+                     (let* ((width (texture-width (sprite-texture)))
+                            (height (texture-height (sprite-texture)))
+                            (sum (+ height width)))
+                       (v* (transform-size)
+                           (vec2 (/ sum height 2)
+                                 (/ sum width 2))))
+                     (sprite-texture)
+                     :rotation (if render-transform
+                                   (render-transform-rotation)
+                                   (transform-rotation))
+                     :depth (sprite-depth)
+                     :layer (sprite-layer))))))
 
 (defbehavior move
   ((dx :init 0.0)

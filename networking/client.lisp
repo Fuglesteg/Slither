@@ -95,34 +95,6 @@
                                             (current-tick)
                                             inputs)))
 
-; Server tick 230
-; RTT is 400 ms
-; Client should predict 0.4 / (1 / 60) / 2 = 12
-; Client tick is then 242
-; Client sends input for tick 242 which arrives ~200 ms later
-; Server tick should then be 242 which means the tick arrives in time for current server tick
-
-; Actual logs:
-
-; Client
-
-; Sending input for tick 201697
-; Server tick 201683
-; Sending input for tick 201698
-; Server tick 201683
-
-; Server
-
-; Received input for tick 201697
-; LAG-RESIM tick=201695 entity=PLAYER input-found=T
-; LAG-RESIM tick=201696 entity=PLAYER input-found=T
-; LAG-RESIM tick=201697 entity=PLAYER input-found=T
-; SIM-NO-INPUT 201707
-; SIM-NO-INPUT 201708
-; Received input for tick 201698
-; LAG-RESIM tick=201698 entity=PLAYER input-found=T
-; SIM-NO-INPUT 201709
-
 (defun send-timestamp ()
   (connection-add-subpacket *server-connection*
                             (make-subpacket :echo

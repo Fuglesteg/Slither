@@ -8,26 +8,16 @@
   (:fixed-tick
    (ui-layout
      (box (:layout-direction :top-to-bottom
-           :background-color (vec4 1.0 0.5 0.3 1.0))
-       (box (:height 10.0
-             :width :grow
-             :background-color (vec4 1.0 0.0 0.0 1.0)))
-       (box (:padding-left 10.0 :padding-right 10.0
-             :padding-top 10.0 :padding-bottom 10.0
-             :child-gap 10.0)
-         (loop repeat 10
-               collect (box (:height 100.0 :width 100.0
-                             :background-color (vec4 0.9 0.4 0.5 1.0)))))
-       (box (:padding-left 10.0 :padding-right 10.0
-             :padding-top 10.0 :padding-bottom 10.0
-             :width :grow
-             :child-gap 10.0)
-         (box (:width :grow
-               :height :grow
-               :background-color (vec4 1.0 0.0 0.0 1.0)))
-         (loop repeat 8
-               collect (box (:height 100.0 :width 100.0
-                             :background-color (vec4 0.1 0.4 0.7 1.0)))))))))
+           :x 100.0
+           :y 100.0
+           :child-gap 20.0
+           :background-color (vec4 0.5 0.5 0.9 1.0))
+       (loop repeat 4
+             collect (box (:child-gap 20.0)
+                       (loop repeat 4
+                             collect (box (:height 50.0
+                                           :width 50.0
+                                           :background-color (vec4 1.0))))))))))
 
 (defvar *messagep* nil)
 
@@ -48,9 +38,9 @@
          (text (:text-content "Server"
                 :text-size 40.0))
          (text-input (:id "ip-address")))
-       (button (:button-text "Join"
-               :on-click (lambda (button)
-                           (setf *messagep* (not *messagep*)))))
+       (button (:button-text "Join server"
+                :on-click (lambda (button)
+                            (setf *messagep* (not *messagep*)))))
        (when *messagep*
          (text (:text-content "YO"
                 :text-size 50.0)))))))

@@ -55,7 +55,8 @@
    :lerp
    :rotation-lerp
    :anchor
-   :position-apply-anchor))
+   :position-apply-anchor
+   :radians->degrees))
 
 (in-package #:slither/utils)
 

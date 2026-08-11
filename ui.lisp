@@ -15,10 +15,10 @@
            :image
            :text
            :ui-layout
-           :ui-register-keys
-           :ui-register-pointer-state
            :ui-layout-render
-           :button))
+           :button
+           :find-ui-component
+           :ui-layout-update))
 
 (in-package :slither/ui)
 
@@ -140,7 +140,7 @@
   (draw-text text
              position
              :rotation 0
-             :size size
+             :size (v/ size 2)
              :depth depth
              :layer layer
              :shader-program ui-array-texture-shader-program
@@ -151,29 +151,12 @@
                                              (depth 0))
   (when slither/render::*initialized*
     (draw-rectangle position
-                    size
+                    (v/ size 2)
                     color
                     :shader-program ui-color-shader-program
                     :anchor anchor
                     :layer 2
                     :depth depth)))
-
-
-
-;; Layouting algorithm
-;; Yoinked from Clay
-;; 1. Fit sizing widths
-;; 2. Grow widths
-;; 3. Wrap text
-;; 4. Fit sizing heights
-;; 5. Grow heights
-;; 6. Positions & Alignments
-;; 7. Draw Calls
-
-;; Macros vs. Functions vs. Tree
-;; Macros can call a closing function, giving free breadth first reverse search
-;; Functions might be easier to reason with and to implement for users
-;; Lisp already has functionality for tree expressions
 
 (defvar *layout* nil)
 (defmacro with-layout (layout &body body)
@@ -260,7 +243,11 @@
                              (list :size size
                                    :min (if (eq size-type :fixed) size min)
                                    :max (if (eq size-type :fixed) size max)
-                                   :size-type size-type))))))
+                                   :size-type size-type)))
+                   (t (list :size size-definition
+                            :min 0.0
+                            :max most-positive-single-float
+                            :size-type :fixed)))))
           (let* ((width-size-definition (parse-size-definition width))
                  (width (getf width-size-definition :size))
                  (width-size-type (getf width-size-definition :size-type))
@@ -351,14 +338,13 @@
       (incf (ui-element-width ui-element)
             (+ (ui-element-padding-left ui-element)
                (ui-element-padding-right ui-element)))
-
+      (when (and (ui-element-children ui-element)
+                 (eq (ui-element-layout-direction ui-element)
+                     :left-to-right))
+        (incf (ui-element-width ui-element)
+              (* (ui-element-child-gap ui-element)
+                 (1- (length (ui-element-children ui-element))))))
       (when-let ((parent (ui-element-parent ui-element)))
-        (let ((total-child-gap (* (1- (length (ui-element-children ui-element)))
-                                  (ui-element-child-gap ui-element))))
-          (when (eq (ui-element-layout-direction ui-element)
-                    :left-to-right)
-            (incf (ui-element-width parent)
-                  total-child-gap)))
         (case (ui-element-layout-direction parent)
           (:left-to-right
            (setf (ui-element-width parent)
@@ -473,8 +459,8 @@
     (labels ((wrap-text (ui-element)
                (when (eq (ui-element-type ui-element)
                          :text)
-                 (let ((characters-per-line (floor (/ (ui-element-width ui-element)
-                                                      (/ (ui-element-text-size ui-element) 2))))
+                 (let ((characters-per-line (floor (ui-element-width ui-element)
+                                                   (/ (ui-element-text-size ui-element))))
                        (separator #\Space)
                        (last-separator-index nil)
                        (current-width 0))
@@ -503,15 +489,15 @@
       (incf (ui-element-height ui-element)
             (+ (ui-element-padding-top ui-element)
                (ui-element-padding-bottom ui-element)))
+      (when (and (ui-element-children ui-element)
+                 (eq (ui-element-layout-direction ui-element)
+                     :top-to-bottom))
+        (incf (ui-element-height ui-element)
+              (* (ui-element-child-gap ui-element)
+                 (1- (length (ui-element-children ui-element))))))
       (when-let ((parent (ui-element-parent ui-element)))
         (when (eq (ui-element-height-size-type parent)
                   :fit)
-          (let ((total-child-gap (* (1- (length (ui-element-children parent)))
-                                    (ui-element-child-gap parent))))
-            (when (eq (ui-element-layout-direction ui-element)
-                      :top-to-bottom)
-              (incf (ui-element-height parent)
-                    total-child-gap)))
           (case (ui-element-layout-direction parent)
             (:left-to-right
              (setf (ui-element-height parent)
@@ -639,10 +625,9 @@
                          (position-across-axis (+ (if left-to-right
                                                       (ui-element-y parent)
                                                       (ui-element-x parent))
-                                                  (* (if left-to-right
+                                                  (if left-to-right
                                                          (ui-element-padding-top parent)
-                                                         (ui-element-padding-left parent))
-                                                     2))))
+                                                         (ui-element-padding-left parent)))))
                      (cond
                        (left-to-right
                         (setf (ui-element-x child) position-along-axis)
@@ -650,10 +635,9 @@
                        (t ; top-to-bottom
                         (setf (ui-element-y child) position-along-axis)
                         (setf (ui-element-x child) position-across-axis))))
-                   (incf offset (+ (* (if left-to-right
+                   (incf offset (+ (if left-to-right
                                        (ui-element-width child)
                                        (ui-element-height child))
-                                      2)
                                    (ui-element-child-gap parent)))
                    (position-children child)))))
       (position-children root-ui-element))
@@ -691,7 +675,20 @@
 
 (defun ui-layout-render ()
   (when *ui-layout*
-    (ui-element-draw *ui-layout*)))
+    (dolist (root-ui-element *ui-layout*)
+      (ui-element-draw root-ui-element))))
+
+(defun ui-layout-update ()
+  (setf *ui-layout* nil)
+  (sb-vm:rewind-arena *ui-arena*)
+  (swap-arenas)
+  (clear-components))
+
+(defmacro ui-layout (&body body)
+  `(progn
+     (push (ui-element-calculate-layout
+            ,@body)
+           *ui-layout*)))
 
 (defun ui-mouse-position ()
   (handler-case
@@ -703,16 +700,7 @@
 (defun mouse-hover-p (position size)
   (v< position
       (ui-mouse-position)
-      (v+ position (v* size 2.0))))
-
-(defmacro ui-layout (&body body)
-  `(progn
-     (setf *ui-layout* nil)
-     (sb-vm:rewind-arena *ui-arena*)
-     (setf *ui-layout*
-           (ui-element-calculate-layout
-            ,@body))
-     (swap-arenas)))
+      (v+ position size)))
 
 (defclass ui-component ()
   ((id
@@ -741,13 +729,17 @@
 
 (defvar *current-element* nil)
 
+(defun current-element ()
+  (when (and *current-element*
+             (typep *current-element* 'ui-element))
+    *current-element*))
+
 (defun element-hovered-p ()
-  (if (null *current-element*)
-      nil
-      (mouse-hover-p (vec2 (ui-element-x *current-element*)
-                           (ui-element-y *current-element*))
-                     (vec2 (ui-element-width *current-element*)
-                           (ui-element-height *current-element*)))))
+  (when-let ((current-element (current-element)))
+      (mouse-hover-p (vec2 (ui-element-x current-element)
+                           (ui-element-y current-element))
+                     (vec2 (ui-element-width current-element)
+                           (ui-element-height current-element)))))
 
 (defun element-clicked-p ()
   (and (element-hovered-p)
@@ -756,6 +748,15 @@
 (defvar *current-component* nil)
 (defun current-component ()
   *current-component*)
+
+(defvar *currently-used-components* nil)
+
+(defun clear-components ()
+  (do-hash-table (id component *ui-components*)
+    (declare (ignore component))
+    (unless (member id *currently-used-components*)
+      (remhash id *ui-components*)))
+  (setf *currently-used-components* nil))
 
 (defmacro define-ui-component (name options &body body)
   (let* ((data (getf options :data))
@@ -789,6 +790,7 @@
                                   ui-component)))
                  (*current-component* component)
                  (*current-element* (ui-component-previous-element-result component)))
+            (push ,id *currently-used-components*)
             (let ((element-result (,',function-symbol
                                    ,,@props-keyword-list)))
               (setf (ui-component-previous-element-result component)
@@ -799,7 +801,7 @@
 
 (define-ui-component text-input
     (:data (text)
-     :props ((background-color (vec4 0.2 0.2 0.2 1.0))))
+     :props ((background-color (vec4 0.1 0.1 0.1 1.0))))
   (when (element-clicked-p)
     (setf *selected-input* (current-component)))
   (let ((selectedp (eq *selected-input* (current-component))))
@@ -807,7 +809,7 @@
       (flet ((register-input-char (input-keyword-symbol character)
                (when (key-pressed-p input-keyword-symbol)
                  (setf text (format nil "~a~a"
-                                    text
+                                    (or text "")
                                     (if (key-held-p :left-shift)
                                         (char-upcase character)
                                         character))))))
@@ -859,7 +861,7 @@
         :padding-top 10.0
         :padding-bottom 10.0
         :background-color (if (element-hovered-p)
-                              (vec4 0.3 0.3 0.3 1.0)
-                              (vec4 0.2 0.2 0.2 1.0)))
+                              (vec4 0.2 0.2 0.2 1.0)
+                              (vec4 0.1 0.1 0.1 1.0)))
     (text (:text-content button-text
            :text-size 50.0))))

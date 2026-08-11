@@ -252,7 +252,9 @@
   (setf *ui-view-matrix*
         (nm*
          (mtranslation (vec2 -1.0 1.0))
-         (mscaling (vec2 (/ 1 1000 (slither/window:aspect-ratio))
+         (mscaling (vec2 (/ 2 slither/window:*window-width*)
+                         (/ 2 slither/window:*window-height*)))
+         #+nil(mscaling (vec2 (/ 1 1000 (slither/window:aspect-ratio))
                          (/ 1 1000))))))
 
 (define-shader-program ui-array-texture-shader-program

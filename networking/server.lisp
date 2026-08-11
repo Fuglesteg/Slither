@@ -168,6 +168,7 @@ will rewind all networked entities and resimulate up to current tick")
 (defvar *on-disconnect* nil)
 
 (defun on-disconnect (connection)
+  (connection-add-subpacket connection (make-subpacket :disconnect))
   (funcall *on-disconnect* connection))
 
 (defun (setf on-disconnect) (new-value)
