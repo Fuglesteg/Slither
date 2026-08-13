@@ -36,7 +36,9 @@
            :vector-input-value
            :button-input-value
            :copy-inputs
-           :vector-value))
+           :vector-value
+           :inputs-disable
+           :inputs-enable))
 
 (in-package #:slither/input)
 
@@ -204,35 +206,53 @@
 (defmacro released-p (input)
   `(input-released-p (input ',input)))
 
+(defvar *inputs-active* t)
+
+(defun inputs-enable ()
+  (setf *inputs-active* t))
+
+(defun inputs-disable ()
+  (setf *inputs-active* nil))
+
 (defun inputs-update ()
   "Read raw key states and update *INPUTS* for this tick. Does NOT transition press/release states."
-  (do-hash-table (input-name input *inputs*)
-    (declare (ignore input-name))
-    (etypecase input
-      (button-input
-       (setf (button-input-value input)
-             (let ((bindings (button-input-bindings input)))
-               (case (length bindings)
-                 (0 nil)
-                 (1 (key-state (first bindings)))
-                 (t (key-state (find-if (lambda (binding) (key-state binding))
-                                        (button-input-bindings input))))))))
-       (vector-input
-        (let ((up (key-held-p (vector-input-up input)))
-              (down (key-held-p (vector-input-down input)))
-              (right (key-held-p (vector-input-right input)))
-              (left (key-held-p (vector-input-left input))))
-          (cond ((or up down left right)
-                (let ((x 0) (y 0))
-                  (when up (incf y))
-                  (when down (decf y))
-                  (when left (decf x))
-                  (when right (incf x))
-                  (vsetf (vector-input-value input) x y)))
-               ((vector-input-polling-function input)
-                (setf (vector-input-value input)
-                      (funcall (vector-input-polling-function input))))
-               (t (vsetf (vector-input-value input) 0.0 0.0))))))))
+  (cond
+    (*inputs-active*
+     (do-hash-table (input-name input *inputs*)
+       (declare (ignore input-name))
+       (etypecase input
+         (button-input
+          (setf (button-input-value input)
+                (let ((bindings (button-input-bindings input)))
+                  (case (length bindings)
+                    (0 nil)
+                    (1 (key-state (first bindings)))
+                    (t (key-state (find-if (lambda (binding) (key-state binding))
+                                           (button-input-bindings input))))))))
+         (vector-input
+          (let ((up (key-held-p (vector-input-up input)))
+                (down (key-held-p (vector-input-down input)))
+                (right (key-held-p (vector-input-right input)))
+                (left (key-held-p (vector-input-left input))))
+            (cond ((or up down left right)
+                   (let ((x 0) (y 0))
+                     (when up (incf y))
+                     (when down (decf y))
+                     (when left (decf x))
+                     (when right (incf x))
+                     (vsetf (vector-input-value input) x y)))
+                  ((vector-input-polling-function input)
+                   (setf (vector-input-value input)
+                         (funcall (vector-input-polling-function input))))
+                  (t (vsetf (vector-input-value input) 0.0 0.0))))))))
+    (t
+     (do-hash-table (input-name input *inputs*)
+       (declare (ignore input-name))
+       (etypecase input
+         (button-input
+          (setf (button-input-value input) nil))
+         (vector-input
+          (vsetf (vector-input-value input) 0.0 0.0)))))))
 
 (defun inputs-tick ()
   "Advance key states states to transition pressed to held and released to nil.
