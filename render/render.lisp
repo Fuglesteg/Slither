@@ -67,7 +67,8 @@
            #:ui-color-shader-program
            #:screen-space-rotation-direction
            #:screen-space-rotation
-           #:screen-space-world-position))
+           #:screen-space-world-position
+           :ui-texture-shader-program))
 
 (in-package #:slither/render)
 
@@ -256,6 +257,20 @@
                          (/ 2 slither/window:*window-height*)))
          #+nil(mscaling (vec2 (/ 1 1000 (slither/window:aspect-ratio))
                          (/ 1 1000))))))
+
+(define-shader-program ui-texture-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader texture-fragment-shader
+  :uniforms '(model-matrix
+              view-matrix
+              texture-scale
+              color)
+  :on-bind (lambda (program)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*))
+  :on-render (lambda (program drawcall-data)
+               (setf (uniform-value (get-uniform program 'model-matrix)) (drawcall-data-model-matrix drawcall-data)
+                     (uniform-value (get-uniform program 'color)) (drawcall-data-color drawcall-data)
+                     (uniform-value (get-uniform program 'texture-scale)) (drawcall-data-texture-scale drawcall-data))))
 
 (define-shader-program ui-array-texture-shader-program
   :vertex-shader texture-vertex-shader
@@ -498,10 +513,10 @@
 (defun reset-drawcall-buffer ()
   (setf (fill-pointer *drawcall-buffer*) 0))
 
-(defvar *current-shader-program* 100000)
-(defvar *current-texture* 100000)
-(defvar *current-vao* 100000)
-(defvar *current-array-texture* 100000)
+(defvar *current-shader-program* most-positive-fixnum)
+(defvar *current-texture* most-positive-fixnum)
+(defvar *current-vao* most-positive-fixnum)
+(defvar *current-array-texture* most-positive-fixnum)
 
 (defun renderer-flush ()
   (gl:clear :color-buffer)
