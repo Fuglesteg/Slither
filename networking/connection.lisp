@@ -13,7 +13,8 @@
    :connection-outbound-packet-id
    :connection-flush
    :connection-send-packet
-   :connection-last-acknowledged-sent-packet-id))
+   :connection-last-acknowledged-sent-packet-id
+   :connection-last-received-packet-id))
 
 (in-package :slither/networking/connection)
 

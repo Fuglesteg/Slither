@@ -169,7 +169,9 @@ will rewind all networked entities and resimulate up to current tick")
 
 (defun on-disconnect (connection)
   (connection-add-subpacket connection (make-subpacket :disconnect))
-  (funcall *on-disconnect* connection))
+  (connection-flush connection)
+  (when *on-disconnect*
+    (funcall *on-disconnect* connection)))
 
 (defun (setf on-disconnect) (new-value)
   (setf *on-disconnect* new-value))
@@ -344,78 +346,80 @@ will rewind all networked entities and resimulate up to current tick")
           (prog1 (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))
             (setf (fill-pointer *inbound-packet-buffer*) 0)))))
     (loop for inbound-packet across inbound-packet-buffer
-        do (multiple-value-bind (protocol
-                                 tick
-                                 packet-id
-                                 acknowledging-packet-id
-                                 last-acknowledged-packets
-                                 subpackets) (parse-packet (inbound-packet-data inbound-packet))
-             (declare (ignore protocol)
-                      (ignorable tick))
-             (let ((connection (find-connection (inbound-packet-origin inbound-packet))))
-               (loop for (subpacket-type . subpacket) in subpackets
-                     do (restart-case
-                          (ecase subpacket-type
-                            (:connect (destructuring-bind (username) subpacket
-                                        (when connection
-                                          (error "Connection already exists"))
-                                        (let ((user (make-instance 'user :name username)))
-                                          (setf (gethash (inbound-packet-origin inbound-packet)
-                                                         *client-connections*)
-                                                (make-instance 'client-connection
-                                                               :remote (inbound-packet-origin inbound-packet)
-                                                               :user user))
-                                          (setf connection (find-connection (inbound-packet-origin inbound-packet)))
-                                          ;; Send scene to new connection
-                                          (setf (connection-outbound-subpackets connection)
-                                                (loop for key being the hash-keys of (networked-objects)
-                                                      using (hash-value networked-object)
-                                                      collect (make-subpacket :entity
-                                                                              key
-                                                                              (behavior-entity networked-object))))
-                                          (connection-add-subpacket connection
-                                                                    (make-subpacket :connect ""))
-                                          (when *on-new-connection*
-                                            (on-new-connection connection)))))
-                            (:disconnect
-                             (remhash (inbound-packet-origin inbound-packet) *client-connections*)
-                             (on-disconnect connection))
-                            (:update t #+nil(destructuring-bind (networked-object-id place-id new-value) subpacket
-                                              (networked-apply-update (find-networked networked-object-id)
-                                                                      place-id
-                                                                      new-value)))
-                            (:action #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
-                                            (apply #'networked-apply-action
-                                                   (find-networked networked-object-id)
-                                                   action-id
-                                                   arguments)))
-                            (:entity nil)
-                            (:input (when connection
-                                      (destructuring-bind (tick buttons analogues) subpacket
-                                        (unless (eq (client-input connection tick)
-                                                    :processed)
-                                          (if (and (null buttons)
-                                                   (null analogues))
-                                              (client-inputs-add connection
-                                                                 tick
-                                                                 :empty)
-                                              (client-inputs-add connection
-                                                                 tick
-                                                                 (cons buttons analogues)))))))
-                            (:destroy (destructuring-bind (networked-object-id) subpacket
-                                        (remove-entity
-                                         (behavior-entity
-                                          (find-networked networked-object-id)))))
-                            (:echo (destructuring-bind (argument) subpacket
-                                     (when connection
-                                     (connection-add-subpacket connection (make-subpacket :echo argument))))))
-                          (skip-packet ()
-                            :report "Skip the current subpacket"
-                            t)))
-               (when connection
-                 (setf (client-connection-last-tick-received connection) (current-tick))
-                 (connection-acknowledge-received connection packet-id)
-                 (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets))))))
+          do (ignore-errors
+               (multiple-value-bind (protocol
+                                     tick
+                                     packet-id
+                                     acknowledging-packet-id
+                                     last-acknowledged-packets
+                                     subpackets) (parse-packet (inbound-packet-data inbound-packet))
+                 (declare (ignore protocol)
+                          (ignorable tick))
+                 (let ((connection (find-connection (inbound-packet-origin inbound-packet))))
+                   (loop for (subpacket-type . subpacket) in subpackets
+                         do (restart-case
+                                (ecase subpacket-type
+                                  (:connect (destructuring-bind (username) subpacket
+                                              (when connection
+                                                (error "Connection already exists"))
+                                              (let ((user (make-instance 'user :name username)))
+                                                (setf (gethash (inbound-packet-origin inbound-packet)
+                                                               *client-connections*)
+                                                      (make-instance 'client-connection
+                                                                     :remote (inbound-packet-origin inbound-packet)
+                                                                     :user user))
+                                                (setf connection (find-connection (inbound-packet-origin inbound-packet)))
+                                                ;; Send scene to new connection
+                                                (setf (connection-outbound-subpackets connection)
+                                                      (loop for key being the hash-keys of (networked-objects)
+                                                            using (hash-value networked-object)
+                                                            collect (make-subpacket :entity
+                                                                                    key
+                                                                                    (behavior-entity networked-object))))
+                                                (connection-add-subpacket connection
+                                                                          (make-subpacket :connect ""))
+                                                (when *on-new-connection*
+                                                  (on-new-connection connection)))))
+                                  (:disconnect
+                                   (when connection
+                                     (on-disconnect connection))
+                                   (remhash (inbound-packet-origin inbound-packet) *client-connections*))
+                                  (:update t #+nil(destructuring-bind (networked-object-id place-id new-value) subpacket
+                                                    (networked-apply-update (find-networked networked-object-id)
+                                                                            place-id
+                                                                            new-value)))
+                                  (:action #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
+                                                  (apply #'networked-apply-action
+                                                         (find-networked networked-object-id)
+                                                         action-id
+                                                         arguments)))
+                                  (:entity nil)
+                                  (:input (when connection
+                                            (destructuring-bind (tick buttons analogues) subpacket
+                                              (unless (eq (client-input connection tick)
+                                                          :processed)
+                                                (if (and (null buttons)
+                                                         (null analogues))
+                                                    (client-inputs-add connection
+                                                                       tick
+                                                                       :empty)
+                                                    (client-inputs-add connection
+                                                                       tick
+                                                                       (cons buttons analogues)))))))
+                                  (:destroy (destructuring-bind (networked-object-id) subpacket
+                                              (remove-entity
+                                               (behavior-entity
+                                                (find-networked networked-object-id)))))
+                                  (:echo (destructuring-bind (argument) subpacket
+                                           (when connection
+                                             (connection-add-subpacket connection (make-subpacket :echo argument))))))
+                              (skip-packet ()
+                                :report "Skip the current subpacket"
+                                t)))
+                   (when connection
+                     (setf (client-connection-last-tick-received connection) (current-tick))
+                     (connection-acknowledge-received connection packet-id)
+                     (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets)))))))
   ;; Remove timed out connections
   (do-hash-table (client-origin client-connection *client-connections*)
     (when (< (client-connection-last-tick-received client-connection)

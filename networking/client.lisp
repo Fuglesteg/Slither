@@ -18,13 +18,14 @@
    :process-inbound-prediction
    :send-inputs
    :unprocessed-inputs
-   :disconnect))
+   :disconnect
+   :on-disconnected-by-server))
 
 (in-package :slither/networking/client)
 
 (defclass server-connection (connection) ())
 
-(defvar *server-connection*)
+(defvar *server-connection* nil)
 
 (defconstant +default-port+ 7878)
 
@@ -58,12 +59,14 @@
                                             :element-type 'octet-vector))
 
 (defun disconnect ()
-  (setf (connection-outbound-subpackets *server-connection*)
-        (list (make-subpacket :disconnect)))
-  (connection-flush *server-connection*)
-  (socket-close)
-  (setf (fill-pointer *inbound-packet-buffer*) 0)
-  (setf *server-connection* nil))
+  (setf (networking-environment) nil)
+  (when *server-connection*
+    (setf (connection-outbound-subpackets *server-connection*)
+          (list (make-subpacket :disconnect)))
+    (connection-flush *server-connection*)
+    (socket-close)
+    (setf (fill-pointer *inbound-packet-buffer*) 0)
+    (setf *server-connection* nil)))
 
 (defun run-server-connection (address &optional username)
   (declare (ignore address username))
@@ -75,6 +78,7 @@
                (vector-push packet
                             *inbound-packet-buffer*))))
       (socket-close)
+      (setf (fill-pointer *inbound-packet-buffer*) 0)
       (setf *server-connection* nil))))
 
 (defvar *server-connection-thread* nil)
@@ -100,8 +104,25 @@
                             (make-subpacket :echo
                                             (glfw:time))))
 
+(declaim (type (or null (function (connection))) *on-disconnected-by-server*))
+(defvar *on-disconnected-by-server* nil)
+
+(defun on-disconnected-by-server ()
+  (disconnect)
+  (when *on-disconnected-by-server*
+    (funcall *on-disconnected-by-server* *server-connection*)))
+
+(defun (setf on-disconnected-by-server) (new-value)
+  (setf *on-disconnected-by-server* new-value))
+
 (defun process-inbound-packets ()
   (when *server-connection*
+    ; Timed out
+    (when (< (+ 1028 (connection-outbound-packet-id *server-connection*))
+             (connection-last-received-packet-id *server-connection*))
+      #+micros(micros:watch (connection-outbound-packet-id *server-connection*))
+      #+micros(micros:watch (connection-last-received-packet-id *server-connection*))
+      (on-disconnected-by-server))
     (let ((inbound-packet-buffer
             (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
               (prog1 (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))
@@ -153,7 +174,9 @@
                             (:destroy
                              (destructuring-bind (networked-object-id) subpacket
                                (when-let ((networked (find-networked networked-object-id)))
-                                 (remove-entity (behavior-entity networked)))))))
+                                 (remove-entity (behavior-entity networked)))))
+                            (:disconnect
+                             (on-disconnected-by-server))))
                    (let ((networked-to-predict nil)
                          (earliest-tick nil))
                      (do-hash-table (networked-id networked (networked-objects))
@@ -184,7 +207,8 @@
 (-> process-inbound-prediction () ())
 (defun process-inbound-prediction ()
   (when *server-connection*
-    (process-inbound-packets)
+    (process-inbound-packets))
+  (when *server-connection*
     (send-inputs slither/input::*inputs*)
     (send-timestamp)))
 
