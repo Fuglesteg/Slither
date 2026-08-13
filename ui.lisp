@@ -18,7 +18,12 @@
            :ui-layout-render
            :button
            :find-ui-component
-           :ui-layout-update))
+           :ui-layout-update
+           :define-ui-component
+           :element-hovered-p
+           :element-clicked-p
+           :current-element
+           :ui-mouse-position))
 
 (in-package :slither/ui)
 
@@ -158,6 +163,21 @@
                     :layer 2
                     :depth depth)))
 
+(defun ui-draw-texture (texture position size &key (color (vec4 1.0))
+                                                   (anchor :top-left)
+                                                   (depth 0)
+                                                   (rotation 0))
+  (when slither/render::*initialized*
+    (draw-texture position
+                  (v/ size 2)
+                  texture
+                  :shader-program ui-texture-shader-program
+                  :rotation rotation
+                  :color color
+                  :depth depth
+                  :layer 2
+                  :anchor anchor)))
+
 (defvar *layout* nil)
 (defmacro with-layout (layout &body body)
   `(let ((*layout* ,layout))
@@ -186,6 +206,10 @@
   (y 0.0 :type single-float)
   (y-alignment :top :type y-alignment)
 
+  (rotation 0.0 :type single-float)
+
+  (z-index 0 :type fixnum)
+
   (width-size-type :fit :type ui-element-size-type)
   (width 0.0 :type single-float)
   (width-min 0.0 :type single-float)
@@ -210,10 +234,13 @@
   (children nil :type list)
 
   (text-size 20.0 :type single-float)
-  (text-content "" :type string))
+  (text-content "" :type string)
+  (texture nil :type (or texture null)))
 
 (defmacro define-ui-element (name type &key constructor parameters)
   `(defmacro ,name ((&key (x 0.0) (y 0.0)
+                          (x-alignment :left)
+                          (y-alignment :top)
                           (width nil)
                           (height nil)
                           (padding-left 0.0) (padding-right 0.0)
@@ -221,6 +248,8 @@
                           (child-gap 0.0)
                           (background-color (vec4 0.1 0.3 0.1 0.0))
                           (layout-direction :left-to-right)
+                          (rotation 0.0)
+                          (z-index 0)
                           ,@parameters)
                     &body children)
      ,(alexandria:with-gensyms (ui-element)
@@ -264,7 +293,9 @@
                          (make-ui-element :type ,,type
                                           :layout-direction ,layout-direction
                                           :x ,x
+                                          :x-alignment ,x-alignment
                                           :y ,y
+                                          :y-alignment ,y-alignment
                                           :width ,width
                                           :width-min ,width-min
                                           :width-max ,width-max
@@ -273,6 +304,8 @@
                                           :height-min ,height-min
                                           :height-max ,height-max
                                           :height-size-type ,height-size-type
+                                          :rotation ,rotation
+                                          :z-index ,z-index
                                           :padding-left ,padding-left
                                           :padding-right ,padding-right
                                           :padding-top ,padding-top
@@ -319,7 +352,8 @@
                           (ui-element-text-size ui-element)
                           0.5))))
 
-(define-ui-element image :image)
+(define-ui-element image :image
+  :parameters ((texture nil)))
 
 (defun ui-element-calculate-layout (root-ui-element)
   ; Main algorithm based on Clay, See: https://github.com/nicbarker/clay
@@ -612,38 +646,80 @@
       (grow-child-heights root-ui-element))
     ; 6. Positions & Alignments
     (labels ((position-children (parent)
-               (let* ((left-to-right (eq (ui-element-layout-direction parent)
-                                         :left-to-right))
-                      (offset (if left-to-right
-                                  (ui-element-padding-left parent)
-                                  (ui-element-padding-top parent))))
-                 (dolist (child (ui-element-children parent))
-                   (let ((position-along-axis (+ (if left-to-right
-                                                     (ui-element-x parent)
-                                                     (ui-element-y parent))
-                                                 offset))
-                         (position-across-axis (+ (if left-to-right
-                                                      (ui-element-y parent)
-                                                      (ui-element-x parent))
-                                                  (if left-to-right
-                                                         (ui-element-padding-top parent)
-                                                         (ui-element-padding-left parent)))))
-                     (cond
-                       (left-to-right
-                        (setf (ui-element-x child) position-along-axis)
-                        (setf (ui-element-y child) position-across-axis))
-                       (t ; top-to-bottom
-                        (setf (ui-element-y child) position-along-axis)
-                        (setf (ui-element-x child) position-across-axis))))
-                   (incf offset (+ (if left-to-right
-                                       (ui-element-width child)
-                                       (ui-element-height child))
-                                   (ui-element-child-gap parent)))
-                   (position-children child)))))
+               (flet ((alignment-offset (alignment remaining)
+                        (if (<= remaining 0)
+                            0
+                            (ecase alignment
+                              ((:left :top) 0)
+                              (:center (/ remaining 2))
+                              ((:right :bottom) remaining)))))
+                 (let* ((left-to-right (eq (ui-element-layout-direction parent)
+                                           :left-to-right))
+                        (children (ui-element-children parent))
+                        (parent-content-width (- (ui-element-width parent)
+                                                 (ui-element-padding-left parent)
+                                                 (ui-element-padding-right parent)))
+                        (parent-content-height (- (ui-element-height parent)
+                                                  (ui-element-padding-top parent)
+                                                  (ui-element-padding-bottom parent)))
+                        (total-child-gap (* (ui-element-child-gap parent)
+                                            (max 0 (1- (length children)))))
+                        (total-children-extent (+ total-child-gap
+                                                  (loop for child in children
+                                                        sum (if left-to-right
+                                                                (ui-element-width child)
+                                                                (ui-element-height child)))))
+                        (main-axis-alignment (if left-to-right
+                                                 (ui-element-x-alignment parent)
+                                                 (ui-element-y-alignment parent)))
+                        (cross-axis-alignment (if left-to-right
+                                                  (ui-element-y-alignment parent)
+                                                  (ui-element-x-alignment parent)))
+                        (offset (+ (if left-to-right
+                                       (ui-element-padding-left parent)
+                                       (ui-element-padding-top parent))
+                                   (alignment-offset
+                                    main-axis-alignment
+                                    (- (if left-to-right
+                                           parent-content-width
+                                           parent-content-height)
+                                       total-children-extent)))))
+                   (dolist (child children)
+                     (let ((position-along-axis (+ (if left-to-right
+                                                       (ui-element-x parent)
+                                                       (ui-element-y parent))
+                                                   offset))
+                           (position-across-axis (+ (if left-to-right
+                                                        (ui-element-y parent)
+                                                        (ui-element-x parent))
+                                                    (if left-to-right
+                                                        (ui-element-padding-top parent)
+                                                        (ui-element-padding-left parent))
+                                                    (alignment-offset
+                                                     cross-axis-alignment
+                                                     (- (if left-to-right
+                                                            parent-content-height
+                                                            parent-content-width)
+                                                        (if left-to-right
+                                                            (ui-element-height child)
+                                                            (ui-element-width child)))))))
+                       (cond
+                         (left-to-right
+                          (incf (ui-element-x child) position-along-axis)
+                          (incf (ui-element-y child) position-across-axis))
+                         (t ; top-to-bottom
+                          (incf (ui-element-y child) position-along-axis)
+                          (incf (ui-element-x child) position-across-axis))))
+                     (incf offset (+ (if left-to-right
+                                         (ui-element-width child)
+                                         (ui-element-height child))
+                                     (ui-element-child-gap parent)))
+                     (position-children child))))))
       (position-children root-ui-element))
     root-ui-element))
 
 (defun ui-element-draw (ui-element &optional (sort-index 0))
+  (incf sort-index (ui-element-z-index ui-element))
   (ecase (ui-element-type ui-element)
     (:box
         (ui-draw-rectangle (vec2 (ui-element-x ui-element)
@@ -659,10 +735,30 @@
                             (- (ui-element-y ui-element)))
                       :size (vec2 (ui-element-text-size ui-element))
                       :anchor :top
-                      :depth (1+ sort-index))))
+                      :depth sort-index))
+    (:image
+        (let* ((texture (ui-element-texture ui-element))
+               (texture-width (texture-width texture))
+               (texture-height (texture-height texture))
+               (element-width (ui-element-width ui-element))
+               (element-height (ui-element-height ui-element))
+               (scale (min (/ (max element-width 1.0) texture-width)
+                           (/ (max element-height 1.0) texture-height)
+                           1.0))
+               (draw-width (* texture-width scale))
+               (draw-height (* texture-height scale))
+               (offset-x (/ (- element-width draw-width) 2))
+               (offset-y (/ (- element-height draw-height) 2)))
+          (ui-draw-texture texture
+                           (vec2 (+ (ui-element-x ui-element) offset-x)
+                                 (- (+ (ui-element-y ui-element) offset-y)))
+                           (vec2 draw-width draw-height)
+                           :anchor :top-left
+                           :depth sort-index
+                           :rotation (ui-element-rotation ui-element)))))
   (incf sort-index)
   (dolist (child (ui-element-children ui-element))
-    (ui-element-draw child sort-index)))
+    (ui-element-draw child (1+ sort-index))))
 
 (defvar *ui-arena* (sb-vm:new-arena (* 16 1024 1024))) ; 16 MBs
 (defvar *ui-arena-previous* (sb-vm:new-arena (* 16 1024 1024)))
@@ -853,7 +949,9 @@
 
 (define-ui-component button
     (:props ((on-click '#'identity)
-             (button-text "Button")))
+             (button-text "Button")
+             (x-alignment :left)
+             (y-alignment :top)))
   (when (element-clicked-p)
     (funcall on-click (current-component)))
   (box (:padding-left 10.0
@@ -862,6 +960,8 @@
         :padding-bottom 10.0
         :background-color (if (element-hovered-p)
                               (vec4 0.2 0.2 0.2 1.0)
-                              (vec4 0.1 0.1 0.1 1.0)))
+                              (vec4 0.1 0.1 0.1 1.0))
+        :x-alignment x-alignment
+        :y-alignment y-alignment)
     (text (:text-content button-text
            :text-size 50.0))))
