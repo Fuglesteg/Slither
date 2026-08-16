@@ -781,10 +781,11 @@
   (clear-components))
 
 (defmacro ui-layout (&body body)
-  `(progn
-     (push (ui-element-calculate-layout
-            ,@body)
-           *ui-layout*)))
+  `(let ((ui-element (ui-element-calculate-layout
+                      ,@body)))
+     (push ui-element
+           *ui-layout*)
+     ui-element))
 
 (defun ui-mouse-position ()
   (handler-case
