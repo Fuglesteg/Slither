@@ -152,7 +152,8 @@
      (remove-networked *behavior*))))
 
 (defun networked-rewind-to-tick (networked tick)
-  (let ((index (min +lag-compensation-history-size+ (- (current-tick) tick))))
+  (let ((index (min (1- +lag-compensation-history-size+)
+                    (1+ (- (current-tick) tick)))))
     (do-hash-table (slot history-buffer (networked-lag-compensated-slots networked))
       (etypecase slot
         (cons (destructuring-bind (behavior . slot) slot

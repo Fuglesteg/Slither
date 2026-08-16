@@ -207,6 +207,25 @@ will rewind all networked entities and resimulate up to current tick")
                           entity)
                  do (return-from entity-client-connection client-connection))))
 
+(defun simulate-entity-with-input (client-connection entity input)
+  (when client-connection
+    (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
+      (when (or (eq input :empty)
+                (consp input))
+        (if (eq input :empty)
+            (slither/input::apply-decoded-inputs nil nil)
+            (destructuring-bind (buttons . analogues) input
+              (slither/input::apply-decoded-inputs buttons analogues))))
+      (tick entity)
+      (fixed-tick entity)
+      (do-hash-table (input-name input slither/input::*inputs*)
+        (declare (ignore input-name))
+        (typecase input
+          (slither/input::button-input
+           (case (slither/input::button-input-value input)
+             (:released (setf (slither/input::button-input-value input) nil))
+             (:pressed (setf (slither/input::button-input-value input) :held)))))))))
+
 (defun run-server ()
   (glfw:init)
   (init-listener)
@@ -228,119 +247,23 @@ will rewind all networked entities and resimulate up to current tick")
               (slither/core::*delta-time* (tick-delta)))
           #+micros (slither/window::read-repl)
           (flush-server)
-          ;; Lag compensation
-          (when *lag-compensate-from-tick*
-            (do-hash-table (networked-id networked (networked-objects))
-              (declare (ignore networked-id))
-              (networked-rewind-to-tick networked *lag-compensate-from-tick*))
-            (dotimes (tick-counter (- tick *lag-compensate-from-tick* 1))
-              (do-hash-table (networked-id networked (networked-objects))
-                (declare (ignore networked-id))
-                (let* ((entity (behavior-entity networked))
-                       (client-connection (entity-client-connection entity))
-                       (input (and client-connection (client-input client-connection (+ *lag-compensate-from-tick* tick-counter)))))
-                  (cond
-                    (input
-                     (destructuring-bind (buttons . analogues) input
-                       (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
-                         (slither/input::apply-decoded-inputs buttons analogues)
-                         (tick entity)
-                         (fixed-tick entity)
-                         (do-hash-table (input-name input slither/input::*inputs*)
-                           (declare (ignore input-name))
-                           (typecase input
-                             (slither/input::button-input
-                              (case (slither/input::button-input-value input)
-                                (:released (setf (slither/input::button-input-value input) nil))
-                                (:pressed (setf (slither/input::button-input-value input) :held)))))))))
-                    (t
-                     (tick entity)
-                     (fixed-tick entity))))))
-            (setf *lag-compensate-from-tick* nil))
-         (dolist (entity (scene-entities (current-scene)))
-            (let* ((client-connection
-                     (entity-client-connection entity))
-                   (input (and client-connection (client-input client-connection tick))))
-              (cond
-                ((and input (not (eq input :empty)))
-                 (let ((input (client-input client-connection tick)))
-                   (when input
-                     (destructuring-bind (buttons . analogues) input
-                       (let ((slither/input::*inputs* (client-connection-inputs client-connection)))
-                         (slither/input::apply-decoded-inputs buttons analogues)
-                         (tick entity)
-                         (fixed-tick entity)
-                         (do-hash-table (input-name input slither/input::*inputs*)
-                           (declare (ignore input-name))
-                           (typecase input
-                             (slither/input::button-input
-                              (case (slither/input::button-input-value input)
-                                (:released (setf (slither/input::button-input-value input) nil))
-                                (:pressed (setf (slither/input::button-input-value input) :held)))))))))))
-                (t
-                 (tick entity)
-                 (fixed-tick entity)))))))
+          (dolist (entity (scene-entities (current-scene)))
+            (let ((client-connection
+                    (entity-client-connection entity)))
+              (if client-connection
+                  (simulate-entity-with-input client-connection
+                                              entity
+                                              (client-input client-connection tick))
+                  (progn
+                    (tick entity)
+                    (fixed-tick entity)))))))
       (client-inputs-shift))))
-
-; === Server lag compensation ===
-
-; Connection input buffer:
-;       v (current-tick)
-; 0 0 0 0 0 0 0 0
-
-; Say we have a late input of current-tick - 3
-; We rewind the history of the entities of the connection
-; Then we resimulate the entities up to current tick
-
-; Then an input of current-tick - 2 comes in
-; We then rewind the history to the given tick and resimulate with the new + old inputs
-
-; Then an input of current-tick - 4 comes in
-; We then have to rewind the history to the given tick and resimulate with the new + old inputs
-
-; This works, but causes a lot of resimulations if multiple late
-; inputs come in the same packet or at the same time in different packets
-
-; Solution is to group inputs, but tag the connection as needing lag compensation / re-simulation,
-; Then the connection will resimulate after all the inputs are already registered
-
-; There is now also a need for keeping input history and not simply tagging it as :processed
-; This could be handled by using a separate array to keep track of processed inputs, or by
-; keeping a data structure in the arrays that keeps both the inputs and the processed state
-
-; Do we even need the :processed flag?
-; It was previously used to not process inputs twice
-; We now only simulate current tick and late inputs
-; We can use the oldest input's tick as input for where to simulate from
-; We know it's unprocessed if no input was there before
-; Then we don't need to keep track of processed inputs
-
-; Global for keeping track of when lag compensation / re-simulation needs to occur
-; All networked entities need to be resimulated
 
 (defun init-server ()
   (sb-thread:make-thread #'run-server
                          :name "slither-server"))
 
 (defun flush-server ()
-  ;; Get updates from networked objects
-  (do-hash-table (key networked-object (networked-objects))
-    (loop for (networked-slot . slot-behavior) in (networked-get-updated-places networked-object)
-          do (send-update key
-                          (entity-find-networked-slot-id (behavior-entity networked-object)
-                                                         networked-slot
-                                                         slot-behavior)
-                          (if slot-behavior
-                              (slot-value (entity-find-behavior (behavior-entity networked-object)
-                                                                slot-behavior)
-                                          networked-slot)
-                              (slot-value (behavior-entity networked-object)
-                                          networked-slot)))))
-  ;; Send outbound packets to clients
-  (do-hash-table (address client-connection *client-connections*)
-    (declare (ignore address))
-    (connection-flush client-connection))
-  ;; Process inbound packets
   (let ((inbound-packet-buffer
           (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
           (prog1 (subseq *inbound-packet-buffer* 0 (length *inbound-packet-buffer*))
@@ -420,6 +343,43 @@ will rewind all networked entities and resimulate up to current tick")
                      (setf (client-connection-last-tick-received connection) (current-tick))
                      (connection-acknowledge-received connection packet-id)
                      (connection-acknowledge-sent connection acknowledging-packet-id last-acknowledged-packets)))))))
+  ;; Lag compensation
+  (when *lag-compensate-from-tick*
+    (do-hash-table (networked-id networked (networked-objects))
+      (declare (ignore networked-id))
+      (networked-rewind-to-tick networked *lag-compensate-from-tick*))
+    (dotimes (tick-counter (- (current-tick) *lag-compensate-from-tick*))
+      (do-hash-table (networked-id networked (networked-objects))
+        (declare (ignore networked-id))
+        (let ((entity (behavior-entity networked))
+              (client-connection (entity-client-connection (behavior-entity networked))))
+          (if client-connection
+              (simulate-entity-with-input client-connection
+                                          entity
+                                          (client-input client-connection
+                                                        (+ *lag-compensate-from-tick*
+                                                           tick-counter)))
+              (progn
+                (tick entity)
+                (fixed-tick entity))))))
+    (setf *lag-compensate-from-tick* nil))
+  ;; Get updates from networked objects
+  (do-hash-table (key networked-object (networked-objects))
+    (loop for (networked-slot . slot-behavior) in (networked-get-updated-places networked-object)
+          do (send-update key
+                          (entity-find-networked-slot-id (behavior-entity networked-object)
+                                                         networked-slot
+                                                         slot-behavior)
+                          (if slot-behavior
+                              (slot-value (entity-find-behavior (behavior-entity networked-object)
+                                                                slot-behavior)
+                                          networked-slot)
+                              (slot-value (behavior-entity networked-object)
+                                          networked-slot)))))
+  ;; Send outbound packets to clients
+  (do-hash-table (address client-connection *client-connections*)
+    (declare (ignore address))
+    (connection-flush client-connection))
   ;; Remove timed out connections
   (do-hash-table (client-origin client-connection *client-connections*)
     (when (< (client-connection-last-tick-received client-connection)
