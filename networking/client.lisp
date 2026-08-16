@@ -70,16 +70,16 @@
 
 (defun run-server-connection (address &optional username)
   (declare (ignore address username))
-  (ignore-errors
-    (unwind-protect
+  (unwind-protect
+       (ignore-errors
          (loop
            (let ((packet (socket-receive)))
              (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
                (vector-push packet
-                            *inbound-packet-buffer*))))
-      (socket-close)
-      (setf (fill-pointer *inbound-packet-buffer*) 0)
-      (setf *server-connection* nil))))
+                            *inbound-packet-buffer*)))))
+    (socket-close)
+    (setf (fill-pointer *inbound-packet-buffer*) 0)
+    (setf *server-connection* nil)))
 
 (defvar *server-connection-thread* nil)
 
@@ -94,10 +94,15 @@
 (defvar *input-packets* nil)
 
 (defun send-inputs (inputs)
-  (connection-add-subpacket *server-connection*
-                            (make-subpacket :input
-                                            (current-tick)
-                                            inputs)))
+  (let ((packet (make-subpacket :input
+                                (current-tick)
+                                inputs)))
+    (push packet *input-packets*)
+    (when (< 5 (length *input-packets*))
+      (setf *input-packets* (subseq *input-packets* 0 5))))
+  (dolist (packet *input-packets*)
+    (connection-add-subpacket *server-connection*
+                              packet)))
 
 (defun send-timestamp ()
   (connection-add-subpacket *server-connection*
@@ -120,8 +125,6 @@
     ; Timed out
     (when (< (+ 1028 (connection-outbound-packet-id *server-connection*))
              (connection-last-received-packet-id *server-connection*))
-      #+micros(micros:watch (connection-outbound-packet-id *server-connection*))
-      #+micros(micros:watch (connection-last-received-packet-id *server-connection*))
       (on-disconnected-by-server))
     (let ((inbound-packet-buffer
             (sb-thread:with-mutex (*inbound-packet-buffer-lock*)
@@ -129,7 +132,8 @@
                 (setf (fill-pointer *inbound-packet-buffer*) 0)))))
       (loop for packet across inbound-packet-buffer
             when packet
-            do (multiple-value-bind (protocol
+            do (restart-case
+                   (multiple-value-bind (protocol
                                      tick
                                      packet-id
                                      acknowledging-packet-id
@@ -202,7 +206,10 @@
                                  (let ((slither/input::*inputs* (networked-simulated-inputs networked))
                                        (slither/core::*delta-time* (tick-delta)))
                                    (fixed-tick (behavior-entity networked))))
-                               (setf (networked-needs-simulation networked) nil))))))))))))
+                               (setf (networked-needs-simulation networked) nil))))))))
+                 (skip-packet ()
+                   :report "Skip the current subpacket"
+                   t))))))
 
 (-> process-inbound-prediction () ())
 (defun process-inbound-prediction ()
@@ -210,10 +217,11 @@
     (process-inbound-packets))
   (when *server-connection*
     (send-inputs slither/input::*inputs*)
-    (send-timestamp)))
+    (send-timestamp)
+    (connection-flush *server-connection*)
+    (client-prediction-tick-rate-flush)))
 
 (-> flush-server-connection () ())
 (defun flush-server-connection ()
   (when *server-connection*
-    (connection-flush *server-connection*)
-    (client-prediction-tick-rate-flush)))
+    (connection-flush *server-connection*)))
