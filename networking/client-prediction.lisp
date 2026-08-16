@@ -15,6 +15,18 @@
   (defun (setf server-tick) (new-value)
     (setf server-tick new-value)))
 
+(defconstant +min-lead-tick-amount+ 3
+  "Minimum number of ticks the client runs ahead of the server")
+
+(defconstant +lead-safety-tick-amount+ 1
+  "Additional lead in ticks on top of the round trip time")
+
+(defconstant +lead-ahead-tick-amount+ 3
+  "Amount of ticks ahead before slowdown")
+
+(defconstant +lead-max-tick-amount+ 8
+  "Maximum overshoot before snap back to target tick")
+
 (let ((smoothed-round-trip-time 0.0d0))
   (defun round-trip-time ()
     smoothed-round-trip-time)
@@ -24,13 +36,23 @@
   (defun reset-client-prediction ()
     (setf smoothed-round-trip-time 0.0d0))
   (defun client-prediction-tick-rate-flush ()
-    (let* ((target-tick (+ (server-tick) (/ smoothed-round-trip-time
-                                            (tick-delta))))
+    (let* ((rtt-tick-amount (/ smoothed-round-trip-time
+                               (tick-delta)))
+           (target-tick (+ (server-tick)
+                           (max rtt-tick-amount
+                                +min-lead-tick-amount+)
+                           +lead-safety-tick-amount+))
            (tick-offset (- (current-tick) target-tick)))
       (cond
-        ((> (abs tick-offset) 5) (setf (current-tick) (ceiling target-tick)))
-        ((> tick-offset 1.5)
-         (setf (tick-delta) (* slither/core::*base-tick-delta* 1.02)))
-        ((< tick-offset -1.5)
+        ((< tick-offset -2)
+         (setf (current-tick) (ceiling target-tick))
+         (setf (tick-delta) slither/core::*base-tick-delta*))
+        ((< tick-offset 1)
          (setf (tick-delta) (* slither/core::*base-tick-delta* 0.98)))
-        (t (setf (tick-delta) slither/core::*base-tick-delta*))))))
+        ((< tick-offset +lead-ahead-tick-amount+)
+         (setf (tick-delta) slither/core::*base-tick-delta*))
+        ((< tick-offset +lead-max-tick-amount+)
+         (setf (tick-delta) (* slither/core::*base-tick-delta* 1.02)))
+        (t
+         (setf (current-tick) (ceiling target-tick))
+         (setf (tick-delta) slither/core::*base-tick-delta*))))))
