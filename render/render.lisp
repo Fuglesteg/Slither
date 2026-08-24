@@ -254,9 +254,7 @@
         (nm*
          (mtranslation (vec2 -1.0 1.0))
          (mscaling (vec2 (/ 2 slither/window:*window-width*)
-                         (/ 2 slither/window:*window-height*)))
-         #+nil(mscaling (vec2 (/ 1 1000 (slither/window:aspect-ratio))
-                         (/ 1 1000))))))
+                         (/ 2 slither/window:*window-height*))))))
 
 (define-shader-program ui-texture-shader-program
   :vertex-shader texture-vertex-shader
@@ -445,8 +443,6 @@
 (defvar *drawcall-buffer*
   (make-array 32768
               :element-type 'drawcall
-              :initial-contents (loop repeat 32768
-                                      collect (make-drawcall))
               :fill-pointer 0
               :adjustable nil))
 
@@ -492,18 +488,17 @@
        (key-get-field 8)
        (key-get-field 8)))))
 
+(defvar *drawcall-arena* (sb-vm:new-arena (* 16 1024 1024))) ; 16 MBs
+
 (defun add-drawcall (&key drawcall-key color model-matrix texture-scale texture-index)
-  (let* ((drawcall (aref *drawcall-buffer* (fill-pointer *drawcall-buffer*)))
-         (drawcall-data (drawcall-data drawcall)))
-    (macrolet ((update-drawcall-field (field)
-                 `(when ,field
-                    (setf (,(intern (format nil "DRAWCALL-DATA-~a" (symbol-name field))) drawcall-data) ,field))))
-      (setf (drawcall-key drawcall) drawcall-key)
-      (update-drawcall-field color)
-      (update-drawcall-field model-matrix)
-      (update-drawcall-field texture-scale)
-      (update-drawcall-field texture-index)))
-  (incf (fill-pointer *drawcall-buffer*)))
+  (sb-vm:with-arena (*drawcall-arena*)
+    (vector-push (make-drawcall :key drawcall-key
+                                :data (apply #'make-drawcall-data
+                                             `(,@(if color `(:color ,color) nil)
+                                               ,@(if model-matrix `(:model-matrix ,model-matrix) nil)
+                                               ,@(if texture-scale `(:texture-scale ,texture-scale) nil)
+                                               ,@(if texture-index `(:texture-index ,texture-index)))))
+                 *drawcall-buffer*)))
 
 (defun sort-drawcall-buffer ()
   (setf *drawcall-buffer* (sort *drawcall-buffer*
@@ -511,7 +506,8 @@
                                 :key #'drawcall-key)))
 
 (defun reset-drawcall-buffer ()
-  (setf (fill-pointer *drawcall-buffer*) 0))
+  (setf (fill-pointer *drawcall-buffer*) 0)
+  (sb-vm:rewind-arena *drawcall-arena*))
 
 (defvar *current-shader-program* most-positive-fixnum)
 (defvar *current-texture* most-positive-fixnum)
