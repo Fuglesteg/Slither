@@ -6,7 +6,8 @@
         :slither/networking/protocol
         :slither/networking/networked
         :slither/networking/socket
-        :slither/networking/connection)
+        :slither/networking/connection
+        :slither/networking/actions)
   (:local-nicknames (:glfw :org.shirakumo.fraf.glfw))
   (:export
    :user
@@ -311,11 +312,10 @@ will rewind all networked entities and resimulate up to current tick")
                                                     (networked-apply-update (find-networked networked-object-id)
                                                                             place-id
                                                                             new-value)))
-                                  (:action #+nil(destructuring-bind (networked-object-id action-id arguments) subpacket
-                                                  (apply #'networked-apply-action
-                                                         (find-networked networked-object-id)
-                                                         action-id
-                                                         arguments)))
+                                  (:action
+                                   #+micros (micros:watch :action)
+                                   (destructuring-bind (action-id arguments) subpacket
+                                             (call-networked-action action-id arguments)))
                                   (:entity nil)
                                   (:input (when connection
                                             (destructuring-bind (tick buttons analogues) subpacket

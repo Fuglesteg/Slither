@@ -81,15 +81,14 @@
            (packet-write-byte place-id :bytes 2)
            (packet-write-sequence encoded-argument)))))
     (:action
-     (destructuring-bind (networked-object-id action-id . arguments) arguments
+     (destructuring-bind (action-id . arguments) arguments
        (let* ((encoded-arguments (encode-arguments arguments))
-              (packet-length (+ (length encoded-arguments) 2 2)))
-         (with-vector-writer (make-octet-vector (+ packet-length 3)) (:write-integer packet-write-byte
+              (packet-length (length encoded-arguments)))
+         (with-vector-writer (make-octet-vector (+ packet-length 5)) (:write-integer packet-write-byte
                                                                       :write-sequence packet-write-sequence)
            (packet-write-byte 4 :bytes 1)
-           (packet-write-byte packet-length :bytes 2)
-           (packet-write-byte networked-object-id :bytes 2)
            (packet-write-byte action-id :bytes 2)
+           (packet-write-byte packet-length :bytes 2)
            (packet-write-sequence encoded-arguments)))))
 
     (:input
@@ -162,17 +161,15 @@
                   new-value)
                  (+ 3 packet-length))))
       (4
-       (let* ((packet-length (packet-read-bytes 2))
-              (networked-object-id (packet-read-bytes 2))
-              (action-id (packet-read-bytes 2))
-              (arguments (decode-arguments (packet-read-sequence (- packet-length 4)))))
+       (let* ((action-id (packet-read-bytes 2))
+              (packet-length (packet-read-bytes 2))
+              (arguments (decode-arguments (packet-read-sequence packet-length))))
          (values
           (list
            :action
-           networked-object-id
            action-id
            arguments)
-          (+ packet-length 3))))
+          (+ packet-length 1 2 2))))
 
       (5
        (let* ((tick (packet-read-bytes 4))

@@ -34,6 +34,10 @@
 
 (in-package :slither/networking/networked)
 
+(deftype networking-environment ()
+  '(or null (member :client :server)))
+
+(declaim (type networking-environment *networking-environment*))
 (defvar *networking-environment* nil)
 
 (defun networking-environment ()
@@ -175,7 +179,12 @@
 
 (defun networked-register-place-change (networked place-symbol &optional behavior-symbol)
   (when (serverp)
-    (pushnew (entity-find-networked-slot-id (behavior-entity networked) place-symbol behavior-symbol)
+    (networked-register-place-id-change networked
+                                        (entity-find-networked-slot-id (behavior-entity networked) place-symbol behavior-symbol))))
+
+(defun networked-register-place-id-change (networked place-id)
+  (when (serverp)
+    (pushnew place-id
              (networked-updated-places networked))))
 
 (defun networked-get-updated-places (networked)

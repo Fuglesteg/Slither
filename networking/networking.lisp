@@ -5,7 +5,8 @@
         :slither/scenes)
   (:use-reexport :slither/networking/server
                  :slither/networking/client
-                 :slither/networking/networked)
+                 :slither/networking/networked
+                 :slither/networking/actions)
   (:export :start-server
            :start-network-client
            :client-prediction-tick-rate-flush
