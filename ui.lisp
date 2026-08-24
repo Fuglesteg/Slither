@@ -811,7 +811,7 @@
 (defmethod slot-unbound (class (ui-component ui-component) slot-name)
   nil)
 
-(defvar *ui-components* (make-hash-table :test 'equal))
+(defvar *ui-components* (make-hash-table :test 'equalp))
 
 (defun register-ui-component (ui-component)
   (setf (gethash (ui-component-id ui-component)
@@ -851,7 +851,8 @@
 (defun clear-components ()
   (do-hash-table (id component *ui-components*)
     (declare (ignore component))
-    (unless (member id *currently-used-components*)
+    (unless (member id *currently-used-components*
+                    :test 'equalp)
       (remhash id *ui-components*)))
   (setf *currently-used-components* nil))
 
@@ -881,18 +882,19 @@
              ,@body)))
        (defmacro ,name ((&key id ,@props) &rest children)
          (declare (ignore children))
-         `(let* ((component (or (find-ui-component ,id)
-                                (let ((ui-component (make-instance ',',name :id ,id)))
-                                  (register-ui-component ui-component)
-                                  ui-component)))
-                 (*current-component* component)
-                 (*current-element* (ui-component-previous-element-result component)))
-            (push ,id *currently-used-components*)
-            (let ((element-result (,',function-symbol
-                                   ,,@props-keyword-list)))
-              (setf (ui-component-previous-element-result component)
-                    element-result)
-              element-result))))))
+         `(sb-vm:without-arena
+            (let* ((component (or (find-ui-component ,id)
+                                  (let ((ui-component (make-instance ',',name :id ,id)))
+                                    (register-ui-component ui-component)
+                                    ui-component)))
+                   (*current-component* component)
+                   (*current-element* (ui-component-previous-element-result component)))
+              (push ,id *currently-used-components*)
+              (let ((element-result (,',function-symbol
+                                     ,,@props-keyword-list)))
+                (setf (ui-component-previous-element-result component)
+                      element-result)
+                element-result)))))))
 
 (defvar *selected-input* nil)
 
@@ -952,7 +954,8 @@
     (:props ((on-click '#'identity)
              (button-text "Button")
              (x-alignment :left)
-             (y-alignment :top)))
+             (y-alignment :top)
+             (background-color (vec4 0.1 0.1 0.1 1.0))))
   (when (element-clicked-p)
     (funcall on-click (current-component)))
   (box (:padding-left 10.0
@@ -960,8 +963,8 @@
         :padding-top 10.0
         :padding-bottom 10.0
         :background-color (if (element-hovered-p)
-                              (vec4 0.2 0.2 0.2 1.0)
-                              (vec4 0.1 0.1 0.1 1.0))
+                              (v+ background-color 0.1)
+                              background-color)
         :x-alignment x-alignment
         :y-alignment y-alignment)
     (text (:text-content button-text
