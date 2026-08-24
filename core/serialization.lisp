@@ -98,6 +98,14 @@
               (argument-write-sequence (car encoded-arguments))
               (argument-write-sequence (cdr encoded-arguments)))))
     (null (octet-vector 9))
+    (vector (let ((arguments (map 'list #'encode-argument argument)))
+              (with-vector-writer (make-octet-vector (+ 3 (apply #'+ (mapcar #'length arguments))))
+                  (:write-integer argument-write-byte
+                   :write-sequence argument-write-sequence)
+                (argument-write-byte 11 :bytes 1)
+                (argument-write-byte (length arguments) :bytes 2)
+                (dolist (argument arguments)
+                  (argument-write-sequence argument)))))
     (t (octet-vector 10))))
 
 (defun decode-arguments (arguments)
@@ -147,7 +155,15 @@
                        (cons inner-parsed-argument
                              rest-parsed-argument))))
                 (9 nil)
-                (10 t))))
+                (10 t)
+                (11 (let* ((vector-length (read-integer :bytes 2))
+                           (result (make-array vector-length)))
+                      (loop for i from 0 below vector-length
+                            do (multiple-value-bind (parsed-argument parsed-argument-read-bytes) (decode-argument argument-vector)
+                                 (incf bytes-read parsed-argument-read-bytes)
+                                 (setf argument-vector (subseq argument-vector parsed-argument-read-bytes))
+                                 (setf (aref result i) parsed-argument)))
+                      result)))))
         (values parsed-argument
                 bytes-read)))))
 
