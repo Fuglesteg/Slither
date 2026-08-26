@@ -121,8 +121,8 @@
                                                     (* (vy offset) cos))))))
                     (draw-array-texture (v+ position rotated-offset)
                                         size
-                                        (char->font-index char)
-                                        font
+                                        :texture-index (char->font-index char)
+                                        :array-texture font
                                         :color (vec4 1.0 1.0 1.0 1.0)
                                         :rotation rotation
                                         :layer layer
@@ -157,7 +157,7 @@
   (when slither/render::*initialized*
     (draw-rectangle position
                     (v/ size 2)
-                    color
+                    :color color
                     :shader-program ui-color-shader-program
                     :anchor anchor
                     :layer 2
@@ -170,7 +170,7 @@
   (when slither/render::*initialized*
     (draw-texture position
                   (v/ size 2)
-                  texture
+                  :texture texture
                   :shader-program ui-texture-shader-program
                   :rotation rotation
                   :color color

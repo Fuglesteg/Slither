@@ -39,7 +39,7 @@
    (on-render
     :initarg :on-render
     :accessor shader-program-on-render
-    :type (function (shader-program drawcall-data)))
+    :type (function (shader-program)))
    (vertex-shader
     :initarg :vertex-shader
     :accessor shader-program-vertex-shader
@@ -85,14 +85,14 @@
   (alexandria:when-let ((on-bind (shader-program-on-bind program)))
     (funcall on-bind program)))
 
-(defgeneric program-render (program drawcall-data))
+(defgeneric program-render (program))
 
-(defmethod program-render ((program integer) drawcall-data)
-  (program-render (find-shader-program program) drawcall-data))
+(defmethod program-render ((program integer))
+  (program-render (find-shader-program program)))
 
-(defmethod program-render ((program shader-program) drawcall-data)
+(defmethod program-render ((program shader-program))
   (alexandria:when-let ((on-render (shader-program-on-render program)))
-    (funcall on-render program drawcall-data))
+    (funcall on-render program))
   (%gl:draw-elements :triangles 6 :unsigned-int 0))
 
 (defun program-unbind ()

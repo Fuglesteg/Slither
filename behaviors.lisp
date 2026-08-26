@@ -121,7 +121,7 @@
                        (render-transform-position)
                        (transform-position))
                    (transform-size)
-                   (rectangle-color *behavior*)
+                   :color (rectangle-color *behavior*)
                    :depth (rectangle-depth *behavior*))))
 
 (defbehavior sprite
@@ -143,7 +143,7 @@
                        (v* (transform-size)
                            (vec2 (/ sum height 2)
                                  (/ sum width 2))))
-                     (sprite-texture)
+                     :texture (sprite-texture)
                      :rotation (if render-transform
                                    (render-transform-rotation)
                                    (transform-rotation))
