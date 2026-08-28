@@ -153,15 +153,17 @@
 
 (defun ui-draw-rectangle (position size &key (color (vec4 1.0 0.0 0.0 1.0))
                                              (anchor :left)
+                                             (border-radius (vec4))
                                              (depth 0))
   (when slither/render::*initialized*
-    (draw-rectangle position
-                    (v/ size 2)
-                    :color color
-                    :shader-program ui-color-shader-program
-                    :anchor anchor
-                    :layer 2
-                    :depth depth)))
+    (draw-rounded-rectangle position
+                            (v/ size 2)
+                            :color color
+                            :shader-program ui-rounded-rectangle-shader-program
+                            :border-radius border-radius
+                            :anchor anchor
+                            :layer 2
+                            :depth depth)))
 
 (defun ui-draw-texture (texture position size &key (color (vec4 1.0))
                                                    (anchor :top-left)
@@ -227,6 +229,8 @@
   (padding-right 0.0 :type single-float)
   (padding-top 0.0 :type single-float)
   (padding-bottom 0.0 :type single-float)
+
+  (border-radius (vec4) :type vec4)
 
   (child-gap 0.0 :type single-float)
 
@@ -330,7 +334,8 @@
                      `(funcall ,constructor ,ui-element))
                 ,',ui-element))))))
 
-(define-ui-element box :box)
+(define-ui-element box :box
+  :parameters ((border-radius (vec4))))
 
 (define-ui-element text :text
   :parameters ((text-content "") (text-size 20.0))
@@ -728,6 +733,7 @@
                                  (ui-element-height ui-element))
                            :color (ui-element-background-color ui-element)
                            :anchor :top-left
+                           :border-radius (ui-element-border-radius ui-element)
                            :depth sort-index))
     (:text
         (ui-draw-text (ui-element-text-content ui-element)
@@ -955,6 +961,7 @@
              (button-text "Button")
              (x-alignment :left)
              (y-alignment :top)
+             (border-radius (vec4))
              (background-color (vec4 0.1 0.1 0.1 1.0))))
   (when (element-clicked-p)
     (funcall on-click (current-component)))
@@ -966,6 +973,7 @@
                               (v+ background-color 0.1)
                               background-color)
         :x-alignment x-alignment
-        :y-alignment y-alignment)
+        :y-alignment y-alignment
+        :border-radius border-radius)
     (text (:text-content button-text
            :text-size 50.0))))

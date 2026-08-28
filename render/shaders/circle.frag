@@ -12,5 +12,9 @@ void main() {
     if (alpha <= 0.0)
         discard;
 
-    FragColor = vec4(color.rgb, color.a * alpha);
+    vec4 resultColor = color;
+    resultColor.a *= alpha;
+    resultColor.rgb *= resultColor.a;
+
+    FragColor = resultColor;
 }

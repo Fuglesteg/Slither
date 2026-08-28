@@ -39,6 +39,7 @@
            #:renderer-init
            #:renderer-flush
            #:draw-rectangle
+           #:draw-rounded-rectangle
            #:draw-static
            #:draw-texture
            #:draw-array-texture
@@ -71,7 +72,9 @@
            #:screen-space-world-position
            #:ui-texture-shader-program
            #:define-drawcall
-           #:draw))
+           #:draw
+           :ui-rounded-rectangle-shader-program
+           :rounded-rectangle-shader-program))
 
 (in-package #:slither/render)
 
@@ -276,6 +279,31 @@
              (ui-view-matrix-update)
              (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*)))
 
+(define-fragment-shader rounded-rectangle-fragment-shader
+  :path (asdf:system-relative-pathname :slither "./render/shaders/rounded-rectangle.frag"))
+
+(define-shader-program rounded-rectangle-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader rounded-rectangle-fragment-shader
+  :uniforms '(model-matrix
+              color
+              view-matrix
+              border-radius
+              rectangle-size)
+  :on-bind (lambda (program)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *view-matrix*)))
+
+(define-shader-program ui-rounded-rectangle-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader rounded-rectangle-fragment-shader
+  :uniforms '(model-matrix
+              color
+              view-matrix
+              border-radius
+              rectangle-size)
+  :on-bind (lambda (program)
+             (ui-view-matrix-update)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*)))
 
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
@@ -284,7 +312,8 @@
   (set-camera-position (vec2 0 0))
   (eval-on-init)
   (gl:enable :blend)
-  (gl:blend-func :src-alpha :one-minus-src-alpha))
+  #+nil(gl:blend-func :src-alpha :one-minus-src-alpha)
+  (gl:blend-func :one :one-minus-src-alpha))
 
 (defun screen-space-world-position (vector)
   (if (= 0 (mdet *view-matrix*))
@@ -314,6 +343,8 @@
 
 (defun screen-space-rotation ()
   (vec2->rotation (screen-space-rotation-direction)))
+
+(defvar *drawcall-arena* (sb-vm:new-arena (* 16 1024 1024))) ; 16 MBs
 
 (defgeneric drawcall-data-bind-program (drawcall-data shader-program)
   (:method ((drawcall-data t) shader-program)))
@@ -415,18 +446,38 @@
                  :color color
                  :texture-index texture-index))))
 
+(define-drawcall rounded-rectangle
+  ((model-matrix (meye 3) :type mat3)
+   (color (vec4) :type vec4)
+   (border-radius (vec4) :type vec4)
+   (rectangle-size (vec2) :type vec2))
+  :shader-program rounded-rectangle-shader-program
+  :vao texture-vertex-array
+  :draw ((position size &key
+                   (color (vec4 1.0))
+                   (anchor :center)
+                   (border-radius (vec4)))
+         (let* ((position (position-apply-anchor position size anchor))
+                (model-matrix (nm* (mtranslation position)
+                                   (mscaling size))))
+           (draw :model-matrix model-matrix
+                 :color color
+                 :border-radius border-radius
+                 :rectangle-size (vunit size)))))
+
 (deftype drawcall-key ()
   '(unsigned-byte 64))
 
 (defstruct drawcall
   (key 0 :type drawcall-key)
-  (data (make-drawcall-data) :type (or null structure-object)))
+  (data nil :type (or null structure-object)))
 
 (declaim (type (vector (or null drawcall)) *drawcall-buffer*))
 (defvar *drawcall-buffer*
   (make-array 32768
               :element-type '(or null drawcall)
-              :fill-pointer nil
+              :initial-element nil
+              :fill-pointer 0
               :adjustable nil))
 
 (declaim (ftype (function (&key (shader-program-id (unsigned-byte 8))
@@ -470,8 +521,6 @@
        (key-get-field 8)
        (key-get-field 8)
        (key-get-field 8)))))
-
-(defvar *drawcall-arena* (sb-vm:new-arena (* 16 1024 1024))) ; 16 MBs
 
 (defun add-drawcall (&key drawcall-key drawcall-data)
   (vector-push (make-drawcall :key drawcall-key

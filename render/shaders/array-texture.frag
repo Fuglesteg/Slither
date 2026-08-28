@@ -8,5 +8,7 @@ uniform vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform sampler2DArray spriteTexture;
 
 void main() {
-    FragColor = texture(spriteTexture, vec3(TexCoord, textureIndex)) * color;
+    vec4 resultColor = color;
+    resultColor.rgb *= resultColor.a;
+    FragColor = texture(spriteTexture, vec3(TexCoord, textureIndex)) * resultColor;
 }

@@ -1,5 +1,6 @@
 (uiop:define-package :slither/assets
-  (:use #:cl)
+  (:use #:cl
+        #:slither/utils)
   #+dev(:local-nicknames (:notify :org.shirakumo.file-notify))
   (:local-nicknames (:harmony :org.shirakumo.fraf.harmony))
   (:export #:asset-data
@@ -35,15 +36,28 @@
 (deftype asset-type ()
   '(member :text :bytes :png :sound))
 
+(defun load-image-file (path)
+  (let ((image (pngload:load-file path
+                                  :flatten t
+                                  :flip-y t)))
+    (let ((data (pngload:data image)))
+      (loop for i from 0 below (length data) by 4
+            do (let ((r (elt data i))
+                     (g (elt data (+ i 1)))
+                     (b (elt data (+ i 2)))
+                     (a (elt data (+ i 3))))
+                 (setf (elt data i) (round (* r a) 255))
+                 (setf (elt data (+ 1 i)) (round (* g a) 255))
+                 (setf (elt data (+ 2 i)) (round (* b a) 255))))
+      image)))
+
 (declaim (ftype (function (symbol (or pathname string) &optional asset-type) t) register-asset))
 (defun register-asset (symbol path &optional (asset-type :text))
   (let ((path (merge-pathnames path (or *default-pathname-defaults*))))
     (add-asset symbol (case asset-type
                         (:text (uiop:read-file-string path))
                         (:bytes (read-file-bytes path))
-                        (:png (pngload:load-file path
-                                                 :flatten t
-                                                 :flip-y t))
+                        (:png (load-image-file path))
                         (:sound path)))))
 
 #+dev (defvar *file-paths* nil)
