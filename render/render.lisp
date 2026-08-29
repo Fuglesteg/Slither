@@ -43,6 +43,7 @@
            #:draw-static
            #:draw-texture
            #:draw-array-texture
+           #:draw-quadratic-bezier
            #:defshader
            #:define-vertex-shader
            #:define-fragment-shader
@@ -74,7 +75,8 @@
            #:define-drawcall
            #:draw
            :ui-rounded-rectangle-shader-program
-           :rounded-rectangle-shader-program))
+           :rounded-rectangle-shader-program
+           :world-space->ui))
 
 (in-package #:slither/render)
 
@@ -248,6 +250,11 @@
          (mscaling (vec2 (/ 2 slither/window:*window-width*)
                          (/ 2 slither/window:*window-height*))))))
 
+(defun world-space->ui (position)
+  (m* (minv *ui-view-matrix*)
+      (v* (screen-space-position position)
+          (vec2 1.0 1.0))))
+
 (define-shader-program ui-texture-shader-program
   :vertex-shader texture-vertex-shader
   :fragment-shader texture-fragment-shader
@@ -305,6 +312,23 @@
              (ui-view-matrix-update)
              (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*)))
 
+(define-fragment-shader quadratic-bezier-fragment-shader
+  :path (asdf:system-relative-pathname :slither "./render/shaders/quadratic-bezier.frag"))
+
+(define-shader-program quadratic-bezier-shader-program
+  :vertex-shader texture-vertex-shader
+  :fragment-shader quadratic-bezier-fragment-shader
+  :uniforms '(start
+              control-point
+              end
+              model-matrix
+              view-matrix
+              thickness
+              color)
+  :on-bind (lambda (program)
+             (ui-view-matrix-update)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*)))
+
 (define-vertex-array-object quad-vertex-array (make-quad-vertex-array-object))
 (define-vertex-array-object texture-vertex-array (make-texture-vertex-array-object))
 
@@ -312,7 +336,6 @@
   (set-camera-position (vec2 0 0))
   (eval-on-init)
   (gl:enable :blend)
-  #+nil(gl:blend-func :src-alpha :one-minus-src-alpha)
   (gl:blend-func :one :one-minus-src-alpha))
 
 (defun screen-space-world-position (vector)
@@ -407,7 +430,7 @@
   :vao texture-vertex-array
   :draw ((position size &key (color (vec4 1.0)))
          (let ((model-matrix (nm* (mtranslation position)
-                                 (mscaling size))))
+                                  (mscaling size))))
            (draw :model-matrix model-matrix
                  :color color))))
 
@@ -464,6 +487,49 @@
                  :color color
                  :border-radius border-radius
                  :rectangle-size (vunit size)))))
+
+(defconstant +bezier-epsilon+ 1e-8)
+
+(defun safe-denominator (a)
+  "Nudge any near-zero component of A away from zero, preserving sign,
+   so division doesn't signal or produce inf/NaN."
+  (vec2 (if (< (abs (vx a)) +bezier-epsilon+)
+            (if (minusp (vx a)) (- +bezier-epsilon+) +bezier-epsilon+)
+            (vx a))
+        (if (< (abs (vy a)) +bezier-epsilon+)
+            (if (minusp (vy a)) (- +bezier-epsilon+) +bezier-epsilon+)
+            (vy a))))
+
+(defun quadratic-bezier-bounding-box (start control-point end)
+  (let* ((a (v+ end (v- start (v* control-point 2.0))))
+         (b (v- control-point start))
+         (t1 (vclamp 0.0 (v/ (v- b) (safe-denominator a)) 1.0))
+         (q (v+ start (v* t1 (v+ (v* b 2.0) (v* t1 a))))))
+    (values (v- (vmin (vmin start end) q)
+                (vec2 5 5))
+            (v- (vmax (vmax start end) q)
+                (vec2 5 5)))))
+
+(define-drawcall quadratic-bezier
+  ((start (vec2) :type vec2)
+   (control-point (vec2) :type vec2)
+   (end (vec2) :type vec2)
+   (thickness 0.02 :type single-float)
+   (color (vec4) :type vec4)
+   (model-matrix (meye 3) :type mat3))
+  :shader-program quadratic-bezier-shader-program
+  :vao texture-vertex-array
+  :draw ((start control-point end &key (thickness 0.02) (color (vec4)))
+         (multiple-value-bind (min-corner max-corner) (quadratic-bezier-bounding-box start control-point end)
+           (let ((half-size (v* (v- max-corner min-corner) 0.5))
+                 (center (v* (v+ max-corner min-corner) 0.5)))
+             (draw :model-matrix (nm* (mtranslation center)
+                                      (mscaling half-size))
+                   :thickness thickness
+                   :color color
+                   :start (v/ (v- start center) half-size)
+                   :control-point (v/ (v- control-point center) half-size)
+                   :end (v/ (v- end center) half-size))))))
 
 (deftype drawcall-key ()
   '(unsigned-byte 64))
