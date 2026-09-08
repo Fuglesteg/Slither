@@ -153,8 +153,9 @@
                                     (list ,@(loop for entity in body
                                                   collect (etypecase entity
                                                             (symbol `(make-instance ',entity))
-                                                            (cons `(make-instance ,@(cons (list 'quote (car entity))
-                                                                                          (cdr entity))))))))))
+                                                            (cons (destructuring-bind (entity-symbol . options) entity
+                                                                        `(make-instance ',entity-symbol
+                                                                                        ,@options)))))))))
                                 ((string= keyword :start)
                                  (scene-method 'start))
                                 ((string= keyword :tick)

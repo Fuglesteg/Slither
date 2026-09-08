@@ -7,19 +7,22 @@
     :accessor entity-behaviors
     :initarg :behaviors)))
 
-(defgeneric entity-make-default-behaviors (entity))
-(defgeneric entity-make-default-behavior (entity behavior-symbol))
-(defgeneric entity-initialize-behaviors (entity))
-(defmethod entity-initialize-behaviors ((entity entity))
-  (setf (entity-behaviors entity) (entity-make-default-behaviors entity)))
+(defgeneric entity-make-default-behaviors (entity &optional behavior-options))
+(defgeneric entity-make-default-behavior (entity behavior-symbol &rest options))
+(defgeneric entity-initialize-behaviors (entity behavior-options)
+  (:method ((entity entity) behavior-options)
+    (setf (entity-behaviors entity)
+          (entity-make-default-behaviors entity behavior-options))))
 
 (defgeneric entity-create (entity)
   (:method ((entity entity))))
 
-(defmethod initialize-instance :after ((entity entity) &key (behaviors nil behaviors-supplied-p) &allow-other-keys)
+(defmethod initialize-instance :after ((entity entity)
+                                       &key (behavior-options nil) (behaviors nil behaviors-supplied-p)
+                                       &allow-other-keys)
   (cond
     ((not behaviors-supplied-p)
-     (entity-initialize-behaviors entity))
+     (entity-initialize-behaviors entity behavior-options))
     (t
      (dolist (behavior behaviors)
        (setf (behavior-entity behavior) entity))))
@@ -180,10 +183,9 @@
 
 (defmacro defentity (name slots &body sections)
   (let ((entity-type-id
-          (or (loop for key being the hash-keys of *entity-type-id-table*
-                    using (hash-value value)
-                    when (eq value name)
-                    return key)
+          (or (do-hash-table (key value *entity-type-id-table*)
+                (when (eq value name)
+                  (return key)))
               (incf *entity-type-id-counter*))))
     (setf (gethash entity-type-id *entity-type-id-table*) name)
     (let (slot-symbols
@@ -209,13 +211,13 @@
                      (push symbol
                            slot-symbols)
                      (let ((slot (list symbol
-                                      :initarg (intern (symbol-name symbol) :keyword))))
+                                       :initarg (intern (symbol-name symbol) :keyword))))
                        (when init-supplied-p
                          (nconc
                           slot
                           (list :initform init)))
-                     (push slot
-                           clos-slots)))))
+                       (push slot
+                             clos-slots)))))
       (setf slot-symbols (nreverse slot-symbols))
       (setf clos-slots (nreverse clos-slots))
       (let (behavior-symbols methods)
@@ -226,30 +228,38 @@
                                   (etypecase behavior
                                     (symbol behavior)
                                     (cons (car behavior))))
-                                (behavior-constructor (behavior entity)
+                                (behavior-constructor (behavior entity behavior-options-symbol)
                                   (etypecase behavior
-                                    (symbol `(make-instance ',behavior :entity ,entity))
-                                    (cons `(make-instance ,@(cons (list 'quote (car behavior)) (cdr behavior))
-                                                          :entity ,entity)))))
-
-                         (setf behavior-symbols (mapcar #'behavior-symbol
-                                                        arguments))
-                         (loop for behavior in behavior-symbols
-                               do (loop for required-behavior in (behavior-required-behaviors behavior)
-                                        do (unless (member required-behavior behavior-symbols)
-                                             (error "Behavior ~a, required by ~a not found in behavior list"
-                                                    required-behavior
-                                                    behavior))))
-                         (let ((entity-symbol (gensym)))
-                           (loop for behavior in arguments
-                               do (push `(defmethod entity-make-default-behavior ((,entity-symbol ,name)
-                                                                                  (behavior-symbol (eql ',(behavior-symbol behavior))))
-                                           ,(behavior-constructor behavior entity-symbol))
-                                        methods))
-                           (push `(defmethod entity-make-default-behaviors ((,entity-symbol ,name))
-                                    (list ,@(loop for behavior in arguments
-                                                  collect (behavior-constructor behavior entity-symbol))))
-                                 methods))))
+                                    (symbol `(apply #'make-instance ',behavior :entity ,entity ,behavior-options-symbol))
+                                    (cons (destructuring-bind (behavior . default-options) behavior
+                                            `(let ((behavior-options (list ,@default-options)))
+                                               (alexandria:doplist (key value ,behavior-options-symbol)
+                                                 (setf (getf behavior-options key) value))
+                                               (apply #'make-instance ',behavior
+                                                      :entity ,entity
+                                                      behavior-options)))))))
+                           (setf behavior-symbols (mapcar #'behavior-symbol
+                                                          arguments))
+                           (loop for behavior in behavior-symbols
+                                 do (loop for required-behavior in (behavior-required-behaviors behavior)
+                                          do (unless (member required-behavior behavior-symbols)
+                                               (error "Behavior ~a, required by ~a not found in behavior list"
+                                                      required-behavior
+                                                      behavior))))
+                           (let ((entity-symbol (gensym)))
+                             (loop for behavior in arguments
+                                   do (push `(defmethod entity-make-default-behavior ((,entity-symbol ,name)
+                                                                                      (behavior-symbol (eql ',(behavior-symbol behavior)))
+                                                                                      &rest options)
+                                               ,(behavior-constructor behavior entity-symbol 'options))
+                                            methods))
+                             (push `(defmethod entity-make-default-behaviors ((,entity-symbol ,name) &optional behavior-options)
+                                      (declare (ignorable behavior-options))
+                                      (list ,@(loop for behavior in arguments
+                                                    collect `(apply #'entity-make-default-behavior ,entity-symbol ',(behavior-symbol behavior)
+                                                                    (assoc-value behavior-options
+                                                                                 ',(behavior-symbol behavior))))))
+                                   methods))))
                         ((string= keyword :tick)
                          (push
                           (let ((entity-symbol (gensym)))
@@ -324,120 +334,120 @@
                           methods))))
         (let ((networked-behavior-symbols (and behavior-symbols
                                                (remove-if-not #'behavior-networked-p behavior-symbols))))
-        `(progn
-           (defclass ,name (entity)
-             ,clos-slots)
-           ,@(loop for slot-symbol in slot-symbols
-                   collect `(define-entity-accessor ,name ,slot-symbol
-                              :networked ,(member slot-symbol networked-slots)
-                              :reader ,(gethash slot-symbol slot-readers)
-                              :writer ,(gethash slot-symbol slot-writers)))
-           (defmethod entity-type-id ((entity ,name))
-             ,entity-type-id)
-           (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
-             ',networked-slots)
-           (defmethod entity-lag-compensated-slots ((entity-symbol (eql ',name)))
-             ',lag-compensated-slots)
-           (defmethod entity-lag-compensated-slots-with-behaviors ((entity ,name))
-             ',(append lag-compensated-slots
-                       (concatenate 'list
-                                    (mapcan (lambda (behavior)
-                                              (mapcar (lambda (slot-symbol)
-                                                        (cons behavior
-                                                              slot-symbol))
-                                                      (behavior-lag-compensated-slots behavior)))
-                                            networked-behavior-symbols))))
-           ,@(let* ((behaviors-networked-slots-overrides
-                      (loop for networked-behavior-symbol in networked-behavior-symbols
-                            append (behavior-networked-slots-overrides networked-behavior-symbol)))
-                    (entity-and-behaviors-networked-slots
-                      (let ((result nil))
-                        (loop for networked-slot in networked-slots
-                              do (push (list networked-slot
-                                             nil)
-                                       result))
-                        (loop for behavior in networked-behavior-symbols
-                              append (loop for networked-slot in (behavior-networked-slots behavior)
-                                           do (unless (find (list behavior networked-slot) behaviors-networked-slots-overrides
-                                                            :test 'equal)
-                                                (push (list networked-slot behavior)
-                                                      result))))
-                        result)))
-               `((defmethod entity-find-networked-slot-symbol ((entity ,name) slot-id)
-                   (ecase slot-id
-                     ,@(loop for (networked-slot behavior) in entity-and-behaviors-networked-slots
-                             for i from 0
-                             collect `(,i (values ',networked-slot
-                                                  ',behavior)))))
-                 (defmethod entity-find-networked-slot-id ((entity ,name) slot-symbol &optional behavior)
-                   (declare (ignorable behavior))
-                   (cond
-                     ,@(loop for (networked-slot slot-behavior) in entity-and-behaviors-networked-slots
-                             for i from 0
-                             collect `(,(if slot-behavior
-                                            `(and (eq slot-symbol ',networked-slot)
-                                                  (eq behavior ',slot-behavior))
-                                            `(eq slot-symbol ',networked-slot))
-                                       ,i))))
-                 (defmethod entity-networked-slots-with-behaviors ((entity ,name))
-                   ',entity-and-behaviors-networked-slots)))
-           ,@(flet ((entity-encoder (slots behaviors)
-                          `(let* ((entity-data (concatenate '(vector (unsigned-byte 8))
-                                                           ,@(loop for slot in slots
-                                                                   collect `(encode-argument
-                                                                             (slot-value entity ',slot)))))
-                                 (behavior-data (concatenate '(vector (unsigned-byte 8))
-                                                             ,@(loop for behavior in behaviors
-                                                                   collect `(behavior-encode
-                                                                            (entity-find-behavior entity ',behavior))))))
-                             (with-vector-writer (make-array (+ 2
-                                                                (length entity-data)
-                                                                (length behavior-data))
-                                                             :element-type '(unsigned-byte 8))
-                                 (:write-integer write-integer
-                                  :write-sequence entity-write-sequence)
-                               (write-integer (length entity-data) :bytes 2)
-                               (entity-write-sequence entity-data)
-                               (entity-write-sequence behavior-data))))
-                        (entity-decoder (slots behaviors)
-                          `(with-vector-reader entity-vector (:read-integer read-integer
-                                                              :read-sequence entity-vector-read-sequence)
-                             (let* ((entity-size (read-integer 2))
-                                    (arguments (when (< 0 entity-size)
-                                                 (decode-arguments
-                                                  (entity-vector-read-sequence entity-size))))
-                                    (entity (make-instance
-                                             ',(find-entity-type-by-id entity-type-id)
-                                             ,@(loop for slot-symbol in slots
-                                                     for i from 0
-                                                     append (list (intern (symbol-name slot-symbol) :keyword)
-                                                                  `(elt arguments ,i)))
-                                             :behaviors nil)))
-                               (declare (ignorable arguments))
-                               (setf (entity-behaviors entity)
-                                     (list ,@(loop for behavior-symbol in behaviors
-                                                   collect `(behavior-decode ',behavior-symbol
-                                                                                 (entity-vector-read-sequence (read-integer 2))
-                                                                                 entity))))
-                               entity))))
-               (let ((non-networked-behaviors (remove-if
-                                               (lambda (behavior)
-                                                 (member behavior networked-behavior-symbols))
-                                               behavior-symbols)))
-               `((defmethod entity-encode-full ((entity ,name))
-                   ,(entity-encoder slot-symbols behavior-symbols))
-                 (defmethod entity-encode ((entity ,name))
-                   ,(entity-encoder networked-slots networked-behavior-symbols))
-                 (defmethod entity-decode-full ((entity-type-id (eql ,entity-type-id)) entity-vector)
-                   ,(entity-decoder slot-symbols behavior-symbols))
-                 (defmethod entity-decode ((entity-type-id (eql ,entity-type-id)) entity-vector)
-                   (let ((entity ,(entity-decoder networked-slots networked-behavior-symbols)))
-                     (setf (entity-behaviors entity)
-                           (append (entity-behaviors entity)
-                                   (list ,@(loop for behavior in non-networked-behaviors
-                                                 collect `(entity-make-default-behavior entity ',behavior)))))
-                     entity)))))
-           ,@methods))))))
+          `(progn
+             (defclass ,name (entity)
+               ,clos-slots)
+             ,@(loop for slot-symbol in slot-symbols
+                     collect `(define-entity-accessor ,name ,slot-symbol
+                                :networked ,(member slot-symbol networked-slots)
+                                :reader ,(gethash slot-symbol slot-readers)
+                                :writer ,(gethash slot-symbol slot-writers)))
+             (defmethod entity-type-id ((entity ,name))
+               ,entity-type-id)
+             (defmethod entity-networked-slots ((entity-symbol (eql ',name)))
+               ',networked-slots)
+             (defmethod entity-lag-compensated-slots ((entity-symbol (eql ',name)))
+               ',lag-compensated-slots)
+             (defmethod entity-lag-compensated-slots-with-behaviors ((entity ,name))
+               ',(append lag-compensated-slots
+                         (concatenate 'list
+                                      (mapcan (lambda (behavior)
+                                                (mapcar (lambda (slot-symbol)
+                                                          (cons behavior
+                                                                slot-symbol))
+                                                        (behavior-lag-compensated-slots behavior)))
+                                              networked-behavior-symbols))))
+             ,@(let* ((behaviors-networked-slots-overrides
+                        (loop for networked-behavior-symbol in networked-behavior-symbols
+                              append (behavior-networked-slots-overrides networked-behavior-symbol)))
+                      (entity-and-behaviors-networked-slots
+                        (let ((result nil))
+                          (loop for networked-slot in networked-slots
+                                do (push (list networked-slot
+                                               nil)
+                                         result))
+                          (loop for behavior in networked-behavior-symbols
+                                append (loop for networked-slot in (behavior-networked-slots behavior)
+                                             do (unless (find (list behavior networked-slot) behaviors-networked-slots-overrides
+                                                              :test 'equal)
+                                                  (push (list networked-slot behavior)
+                                                        result))))
+                          result)))
+                 `((defmethod entity-find-networked-slot-symbol ((entity ,name) slot-id)
+                     (ecase slot-id
+                       ,@(loop for (networked-slot behavior) in entity-and-behaviors-networked-slots
+                               for i from 0
+                               collect `(,i (values ',networked-slot
+                                                    ',behavior)))))
+                   (defmethod entity-find-networked-slot-id ((entity ,name) slot-symbol &optional behavior)
+                     (declare (ignorable behavior))
+                     (cond
+                       ,@(loop for (networked-slot slot-behavior) in entity-and-behaviors-networked-slots
+                               for i from 0
+                               collect `(,(if slot-behavior
+                                              `(and (eq slot-symbol ',networked-slot)
+                                                    (eq behavior ',slot-behavior))
+                                              `(eq slot-symbol ',networked-slot))
+                                         ,i))))
+                   (defmethod entity-networked-slots-with-behaviors ((entity ,name))
+                     ',entity-and-behaviors-networked-slots)))
+             ,@(flet ((entity-encoder (slots behaviors)
+                        `(let* ((entity-data (concatenate '(vector (unsigned-byte 8))
+                                                          ,@(loop for slot in slots
+                                                                  collect `(encode-argument
+                                                                            (slot-value entity ',slot)))))
+                                (behavior-data (concatenate '(vector (unsigned-byte 8))
+                                                            ,@(loop for behavior in behaviors
+                                                                    collect `(behavior-encode
+                                                                              (entity-find-behavior entity ',behavior))))))
+                           (with-vector-writer (make-array (+ 2
+                                                              (length entity-data)
+                                                              (length behavior-data))
+                                                           :element-type '(unsigned-byte 8))
+                             (:write-integer write-integer
+                              :write-sequence entity-write-sequence)
+                             (write-integer (length entity-data) :bytes 2)
+                             (entity-write-sequence entity-data)
+                             (entity-write-sequence behavior-data))))
+                      (entity-decoder (slots behaviors)
+                        `(with-vector-reader entity-vector (:read-integer read-integer
+                                                            :read-sequence entity-vector-read-sequence)
+                           (let* ((entity-size (read-integer 2))
+                                  (arguments (when (< 0 entity-size)
+                                               (decode-arguments
+                                                (entity-vector-read-sequence entity-size))))
+                                  (entity (make-instance
+                                           ',(find-entity-type-by-id entity-type-id)
+                                           ,@(loop for slot-symbol in slots
+                                                   for i from 0
+                                                   append (list (intern (symbol-name slot-symbol) :keyword)
+                                                                `(elt arguments ,i)))
+                                           :behaviors nil)))
+                             (declare (ignorable arguments))
+                             (setf (entity-behaviors entity)
+                                   (list ,@(loop for behavior-symbol in behaviors
+                                                 collect `(behavior-decode ',behavior-symbol
+                                                                           (entity-vector-read-sequence (read-integer 2))
+                                                                           entity))))
+                             entity))))
+                 (let ((non-networked-behaviors (remove-if
+                                                 (lambda (behavior)
+                                                   (member behavior networked-behavior-symbols))
+                                                 behavior-symbols)))
+                   `((defmethod entity-encode-full ((entity ,name))
+                       ,(entity-encoder slot-symbols behavior-symbols))
+                     (defmethod entity-encode ((entity ,name))
+                       ,(entity-encoder networked-slots networked-behavior-symbols))
+                     (defmethod entity-decode-full ((entity-type-id (eql ,entity-type-id)) entity-vector)
+                       ,(entity-decoder slot-symbols behavior-symbols))
+                     (defmethod entity-decode ((entity-type-id (eql ,entity-type-id)) entity-vector)
+                       (let ((entity ,(entity-decoder networked-slots networked-behavior-symbols)))
+                         (setf (entity-behaviors entity)
+                               (append (entity-behaviors entity)
+                                       (list ,@(loop for behavior in non-networked-behaviors
+                                                     collect `(entity-make-default-behavior entity ',behavior)))))
+                         entity)))))
+             ,@methods))))))
 
 (defmacro with-behaviors (behaviors entity &body body)
   (let (behavior-binds slot-binds)
