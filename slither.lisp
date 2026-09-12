@@ -18,9 +18,10 @@
 (in-package #:slither)
 
 (defun start-game (&key window)
-  (with-window window
-    (renderer-init)
-    (audio-init)
+  (in-main-thread
+    (with-window window
+      (renderer-init)
+      (audio-init)
       (with-event-loop
         (update-scene)
-        (renderer-flush))))
+        (renderer-flush)))))

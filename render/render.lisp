@@ -85,14 +85,15 @@
   (defvar *initialized* nil)
 
   (defun eval-on-init ()
-    (loop for function in *eval-on-init*
-          do (restart-case (funcall function)
-               (skip () :report "Skip current function")))
+    (in-main-thread
+      (loop for function in *eval-on-init*
+            do (restart-case (funcall function)
+                 (skip () :report "Skip current function"))))
     (setf *initialized* t))
 
   (defmacro delay-evaluation (&body body)
     (if *initialized*
-        `(progn ,@body (values))
+        `(progn (in-main-thread ,@body) (values))
         `(setf *eval-on-init*
                (append
                 *eval-on-init*

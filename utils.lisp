@@ -56,7 +56,8 @@
    :rotation-lerp
    :anchor
    :position-apply-anchor
-   :radians->degrees))
+   :radians->degrees
+   :in-main-thread))
 
 (in-package #:slither/utils)
 
@@ -206,3 +207,8 @@
                                      (vy size))))
     (:bottom-right (v+ position (vec2 (- (vx size))
                                       (vy size))))))
+
+(defmacro in-main-thread (&body body)
+  `(sb-thread:interrupt-thread (sb-thread:main-thread)
+                               (lambda ()
+                                 ,@body)))
