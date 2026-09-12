@@ -174,11 +174,10 @@
                                                                      (rigidbody-velocity foreign-rigidbody)
                                                                      (vec2))
                                                                  (rigidbody-velocity)))
-                                          (tangent (safe-vscale
+                                          (tangent (vunit*
                                                     (v- relative-velocity
                                                         (v* normalized-offset
-                                                            (v. relative-velocity normalized-offset)))
-                                                    1))
+                                                            (v. relative-velocity normalized-offset)))))
                                           (tangent-magnitude (/ (- (v. relative-velocity tangent))
                                                                 (+ this-inverse-mass
                                                                    foreign-inverse-mass)))
