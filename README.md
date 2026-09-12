@@ -24,7 +24,7 @@ Game logic is defined using entities and behaviors. A behavior is something that
     - Move & Camera
     - etc...
 - Immediate mode UI framework
-    - Flexbox style layout (based on [Clay](https://github.com/nicbarker/clay))
+    - Flexbox style layout (Inspired by [Clay](https://github.com/nicbarker/clay))
     - Use components to compose logic and layout `define-ui-component`
 - Physics
     - Simple 2D rigidbody physics
