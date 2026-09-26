@@ -340,12 +340,14 @@
   (gl:blend-func :one :one-minus-src-alpha))
 
 (defun screen-space-world-position (vector)
-  (if (= 0 (mdet *view-matrix*))
+  (if (< (abs (mdet *view-matrix*))
+         1e-6)
       vector
       (m* (minv *view-matrix*) vector)))
 
 (defun screen-space-position (vector)
-  (if (= 0 (mdet *view-matrix*))
+  (if (< (abs (mdet *view-matrix*))
+         1e-6)
       vector
       (m* *view-matrix* vector)))
 
@@ -446,7 +448,7 @@
    (texture-scale (vec2 1.0) :type vec2))
   :shader-program texture-shader-program
   :vao texture-vertex-array
-  :draw ((position size &key (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-scale (vec2 1.0)))
+  :draw ((position size &key scale (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-scale (vec2 1.0)))
          (let* ((position (position-apply-anchor position size anchor))
                 (model-matrix (nm* (mtranslation position)
                                    (m3rotate rotation)
