@@ -25,6 +25,7 @@
                  (:file "serialization")
                  (:file "entities")
                  (:file "behaviors")
+                 (:file "systems")
                  (:file "game-loop")))
                (:file "assets")
                (:file "audio")

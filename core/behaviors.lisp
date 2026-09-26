@@ -2,6 +2,11 @@
 
 (defvar *behavior* nil)
 
+(defmacro with-behavior (behavior &body body)
+  `(let ((*behavior* ,behavior)
+         (*entity* (behavior-entity ,behavior)))
+     ,@body))
+
 (defclass behavior ()
   ((entity
     :accessor behavior-entity

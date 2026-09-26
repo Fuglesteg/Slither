@@ -8,6 +8,7 @@
            #:tick
            #:fixed-tick
            #:*entity*
+           #:with-entity
            #:entity
            #:entity-invoke
            #:defentity
@@ -23,6 +24,7 @@
            #:entity-networked-slots
            #:entity-lag-compensated-slots-with-behaviors
            #:*behavior*
+           #:with-behavior
            #:behavior
            #:behavior-invoke
            #:defbehavior
@@ -48,4 +50,12 @@
            #:vector-read-integer
            #:integer->byte-array
            #:with-vector-reader
-           #:with-vector-writer))
+           #:with-vector-writer
+           ; Systems
+           #:defsystem
+           #:system-tick
+           #:system-fixed-tick
+           #:system-start
+           #:systems-tick
+           #:systems-fixed-tick
+           #:systems-start))

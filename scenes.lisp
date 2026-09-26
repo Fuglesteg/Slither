@@ -125,6 +125,7 @@
            (input-history-record)
            (ui-layout-update)
            (call-next-method)
+           (systems-fixed-tick)
            (let ((slither/core::*delta-time* (tick-delta)))
              (fixed-update-entities))
            (inputs-tick)))
