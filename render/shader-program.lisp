@@ -35,11 +35,11 @@
    (on-bind
     :initarg :on-bind
     :accessor shader-program-on-bind
-    :type (function (shader-program)))
+    :type (or null (function (shader-program))))
    (on-render
     :initarg :on-render
     :accessor shader-program-on-render
-    :type (function (shader-program)))
+    :type (or null (function (shader-program))))
    (vertex-shader
     :initarg :vertex-shader
     :accessor shader-program-vertex-shader
