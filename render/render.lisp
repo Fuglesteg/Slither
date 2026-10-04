@@ -76,7 +76,8 @@
            #:draw
            :ui-rounded-rectangle-shader-program
            :rounded-rectangle-shader-program
-           :world-space->ui))
+           :world-space->ui
+           :ui-quadratic-bezier-shader-program))
 
 (in-package #:slither/render)
 
@@ -322,10 +323,16 @@
   :uniforms '(start
               control-point
               end
+              size
               model-matrix
               view-matrix
               thickness
               color)
+  :on-bind (lambda (program)
+             (setf (uniform-value (get-uniform program 'view-matrix)) *view-matrix*)))
+
+(define-shader-program ui-quadratic-bezier-shader-program
+  :extends quadratic-bezier-shader-program
   :on-bind (lambda (program)
              (ui-view-matrix-update)
              (setf (uniform-value (get-uniform program 'view-matrix)) *ui-view-matrix*)))
@@ -448,8 +455,16 @@
    (texture-scale (vec2 1.0) :type vec2))
   :shader-program texture-shader-program
   :vao texture-vertex-array
-  :draw ((position size &key scale (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-scale (vec2 1.0)))
+  :draw ((position size &key (maintain-ratio t) (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-scale (vec2 1.0)))
          (let* ((position (position-apply-anchor position size anchor))
+                (size (if maintain-ratio
+                          (let* ((width (texture-width texture))
+                                 (height (texture-height texture))
+                                 (sum (+ height width)))
+                            (v* size
+                                (vec2 (/ sum height 2)
+                                      (/ sum width 2))))
+                          size))
                 (model-matrix (nm* (mtranslation position)
                                    (m3rotate rotation)
                                    (mscaling size))))
@@ -510,29 +525,36 @@
          (q (v+ start (v* t1 (v+ (v* b 2.0) (v* t1 a))))))
     (values (v- (vmin (vmin start end) q)
                 (vec2 5 5))
-            (v- (vmax (vmax start end) q)
+            (v+ (vmax (vmax start end) q)
                 (vec2 5 5)))))
 
 (define-drawcall quadratic-bezier
   ((start (vec2) :type vec2)
    (control-point (vec2) :type vec2)
    (end (vec2) :type vec2)
-   (thickness 0.02 :type single-float)
+   (thickness 1.0 :type single-float)
+   (size (vec2) :type vec2)
    (color (vec4) :type vec4)
    (model-matrix (meye 3) :type mat3))
   :shader-program quadratic-bezier-shader-program
   :vao texture-vertex-array
-  :draw ((start control-point end &key (thickness 0.02) (color (vec4)))
+  :draw ((start control-point end &key (thickness 1.0) (color (vec4)))
          (multiple-value-bind (min-corner max-corner) (quadratic-bezier-bounding-box start control-point end)
-           (let ((half-size (v* (v- max-corner min-corner) 0.5))
-                 (center (v* (v+ max-corner min-corner) 0.5)))
+           (let* ((size (v- max-corner min-corner))
+                  (half-size (v* size 0.5))
+                  (center (v* (v+ max-corner min-corner) 0.5)))
+             (when (< 1e-2 (vlength half-size))
+               (setf start (v/ (v- start center) half-size))
+               (setf control-point (v/ (v- control-point center) half-size))
+               (setf end (v/ (v- end center) half-size)))
              (draw :model-matrix (nm* (mtranslation center)
                                       (mscaling half-size))
                    :thickness thickness
+                   :size size
                    :color color
-                   :start (v/ (v- start center) half-size)
-                   :control-point (v/ (v- control-point center) half-size)
-                   :end (v/ (v- end center) half-size))))))
+                   :start start
+                   :control-point control-point
+                   :end end)))))
 
 (deftype drawcall-key ()
   '(unsigned-byte 64))

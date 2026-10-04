@@ -7,6 +7,7 @@ uniform vec2 start = vec2(0.0);
 uniform vec2 controlPoint = vec2(0.0);
 uniform vec2 end = vec2(0.0);
 
+uniform vec2 size = vec2(0,0);
 uniform float thickness = 0.02;
 uniform vec4 color = vec4(0.0);
 
@@ -36,8 +37,13 @@ float sdBezier(vec2 p, vec2 v0, vec2 v1, vec2 v2) {
 }
 
 void main() {
-    vec2 pixel = TexCoord * 2.0 - 1.0; // Map to [-1, 1] coordinates
-    float signedDistance = sdBezier(pixel, start, controlPoint, end);
+    vec2 halfSize = size * 0.5;
+    vec2 p = (TexCoord * 2.0 - 1.0) * halfSize;   // world/UI units
+    start *= halfSize;
+    controlPoint *= halfSize;
+    end *= halfSize;
+
+    float signedDistance = sdBezier(p, start, controlPoint, end);
     signedDistance -= thickness * 0.5;
     float edge = fwidth(signedDistance);
     float alpha = 1.0 - smoothstep(-edge, edge, signedDistance);
