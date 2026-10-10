@@ -120,6 +120,10 @@
     :initarg :bindings
     :initform nil
     :accessor button-input-bindings)
+   (enabled
+    :initarg :enabled
+    :initform t
+    :accessor button-input-enabled)
    (value
     :initarg :value
     :initform nil
@@ -166,7 +170,6 @@
           until (not (gethash i *code-input-table*))
           finally (setf (gethash i *code-input-table*) symbol)
                   (setf (gethash symbol *input-code-table*) i))))
-
 
 (defvar *inputs* (make-hash-table :test 'eq
                                   :size 32))
@@ -223,12 +226,14 @@
        (etypecase input
          (button-input
           (setf (button-input-value input)
-                (let ((bindings (button-input-bindings input)))
-                  (case (length bindings)
-                    (0 nil)
-                    (1 (key-state (first bindings)))
-                    (t (key-state (find-if (lambda (binding) (key-state binding))
-                                           (button-input-bindings input))))))))
+                (if (button-input-enabled input)
+                    (let ((bindings (button-input-bindings input)))
+                      (case (length bindings)
+                        (0 nil)
+                        (1 (key-state (first bindings)))
+                        (t (key-state (find-if (lambda (binding) (key-state binding))
+                                               (button-input-bindings input))))))
+                    nil)))
          (vector-input
           (let ((up (key-held-p (vector-input-up input)))
                 (down (key-held-p (vector-input-down input)))
