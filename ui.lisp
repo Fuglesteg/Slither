@@ -11,6 +11,7 @@
            :ui-draw-button
            :text-input
            :ui-draw-rectangle
+           :ui-draw-quadratic-bezier
            :box
            :image
            :text
@@ -23,7 +24,19 @@
            :element-hovered-p
            :element-clicked-p
            :current-element
-           :ui-mouse-position))
+           :ui-mouse-position
+           :ui-element
+           :ui-element-x
+           :ui-element-y
+           :ui-element-height
+           :ui-element-width
+           :ui-element-hovered-p
+           :ui-element-clicked-p
+           :ui-component
+           :ui-component-previous-element-result
+           :ui-component-id
+           :ui-component-hovered-p
+           :ui-component-clicked-p))
 
 (in-package :slither/ui)
 
@@ -178,7 +191,22 @@
                   :color color
                   :depth depth
                   :layer 2
-                  :anchor anchor)))
+                  :anchor anchor
+                  :maintain-ratio nil)))
+
+(defun ui-draw-quadratic-bezier (start control-point end
+                                 &key (thickness 1.0)
+                                      (color (vec4))
+                                      (depth 0))
+  (when slither/render::*initialized*
+    (draw-quadratic-bezier start
+                           control-point
+                           end
+                           :shader-program ui-quadratic-bezier-shader-program
+                           :thickness thickness
+                           :color color
+                           :depth depth
+                           :layer 2)))
 
 (defvar *layout* nil)
 (defmacro with-layout (layout &body body)
@@ -316,7 +344,7 @@
                                           :padding-bottom ,padding-bottom
                                           :background-color ,background-color
                                           :child-gap ,child-gap
-                                          :children (alexandria:flatten (list ,@children))
+                                          :children (sb-vm:without-arena (alexandria:flatten (list ,@children)))
                                           ,,@(loop for parameter in parameters
                                                    append (let ((parameter-symbol
                                                                   (etypecase parameter
@@ -756,10 +784,10 @@
                (offset-x (/ (- element-width draw-width) 2))
                (offset-y (/ (- element-height draw-height) 2)))
           (ui-draw-texture texture
-                           (vec2 (+ (ui-element-x ui-element) offset-x)
-                                 (- (+ (ui-element-y ui-element) offset-y)))
+                           (vec2 (+ (ui-element-x ui-element) offset-x (* draw-width 0.5))
+                                 (- (+ (ui-element-y ui-element) offset-y (* draw-height 0.5))))
                            (vec2 draw-width draw-height)
-                           :anchor :top-left
+                           :anchor :center
                            :depth sort-index
                            :rotation (ui-element-rotation ui-element)))))
   (incf sort-index)
@@ -800,15 +828,30 @@
           (vec2 1.0 -1.0))
     (error () (vec2))))
 
+(-> mouse-hover-p (vec2 vec2) boolean)
 (defun mouse-hover-p (position size)
   (v< position
       (ui-mouse-position)
       (v+ position size)))
 
+(-> ui-element-hovered-p (ui-element) boolean)
+(defun ui-element-hovered-p (ui-element)
+  (mouse-hover-p (vec2 (ui-element-x ui-element)
+                       (ui-element-y ui-element))
+                 (vec2 (ui-element-width ui-element)
+                       (ui-element-height ui-element))))
+
+(-> ui-element-clicked-p (ui-element) boolean)
+(defun ui-element-clicked-p (ui-element)
+  (and (ui-element-hovered-p ui-element)
+       (key-pressed-p :left-click)))
+
+
 (defclass ui-component ()
   ((id
-   :type string
+   :type (or null string)
    :initarg :id
+   :initform nil
    :accessor ui-component-id)
    (previous-element-result
     :type ui-element
@@ -830,6 +873,11 @@
 (defun find-ui-component (id)
   (gethash id *ui-components*))
 
+(-> ui-component-hovered-p (ui-component) boolean)
+(defun ui-component-hovered-p (ui-component)
+  (when-let ((element (ui-component-previous-element-result ui-component)))
+    (ui-element-hovered-p element)))
+
 (defvar *current-element* nil)
 
 (defun current-element ()
@@ -839,14 +887,11 @@
 
 (defun element-hovered-p ()
   (when-let ((current-element (current-element)))
-      (mouse-hover-p (vec2 (ui-element-x current-element)
-                           (ui-element-y current-element))
-                     (vec2 (ui-element-width current-element)
-                           (ui-element-height current-element)))))
+      (ui-element-hovered-p current-element)))
 
 (defun element-clicked-p ()
-  (and (element-hovered-p)
-       (key-pressed-p :left-click)))
+  (when-let ((current-element (current-element)))
+    (ui-element-clicked-p current-element)))
 
 (defvar *current-component* nil)
 (defun current-component ()
@@ -864,6 +909,17 @@
 
 (defmacro define-ui-component (name options &body body)
   (let* ((data (getf options :data))
+         (data-slots (mapcar (lambda (data-slot)
+                               (etypecase data-slot
+                                 (symbol data-slot)
+                                 (cons (destructuring-bind (name initform) data-slot
+                                         `(,name :initform ,initform)))))
+                             data))
+         (data-names (mapcar (lambda (data-slot)
+                               (etypecase data-slot
+                                 (symbol data-slot)
+                                 (cons (car data-slot))))
+                             data))
          (props (getf options :props))
          (function-symbol (intern (format nil "~a%" (symbol-name name))))
          (props-keyword-list (mapcan (lambda (prop)
@@ -876,14 +932,14 @@
                                      props)))
     `(progn
        (defclass ,name (ui-component)
-         ,data)
+         ,data-slots)
        (defun ,function-symbol (&key ,@(mapcan (lambda (prop)
                                                  (list
                                                   (etypecase prop
                                                     (list (first prop))
                                                     (symbol prop))))
                                         props))
-         (with-slots ,data (current-component)
+         (with-slots ,data-names (current-component)
            (sb-vm:without-arena
              ,@body)))
        (defmacro ,name ((&key id ,@props) &rest children)
