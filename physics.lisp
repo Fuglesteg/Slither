@@ -34,21 +34,33 @@
   (loop for circle-collider in (behaviors-of-type 'circle-collider)
         do (when (circle-collision-p circle-position
                                      circle-radius
-                                     (rigidbody-position (behavior-entity circle-collider))
+                                     (if-let ((rigidbody (entity-find-behavior
+                                                          (behavior-entity circle-collider)
+                                                          'rigidbody)))
+                                       (rigidbody-position rigidbody)
+                                       (transform-position (behavior-entity circle-collider)))
                                      (circle-radius circle-collider))
              (return circle-collider))))
 
 (defun circle-collisions (circle-position circle-radius)
   (loop for circle-collider in (behaviors-of-type 'circle-collider)
         when (circle-collision-p circle-position
-                                    circle-radius
-                                    (rigidbody-position (behavior-entity circle-collider))
-                                    (circle-radius circle-collider))
+                                 circle-radius
+                                 (if-let ((rigidbody (entity-find-behavior
+                                                      (behavior-entity circle-collider)
+                                                      'rigidbody)))
+                                   (rigidbody-position rigidbody)
+                                   (transform-position (behavior-entity circle-collider)))
+                                 (circle-radius circle-collider))
         collect circle-collider))
 
 (defun point-collides-p (point)
   (loop for circle-collider in (behaviors-of-type 'circle-collider)
-        do (when (circle-overlaps-point-p (rigidbody-position (behavior-entity circle-collider))
+        do (when (circle-overlaps-point-p (if-let ((rigidbody (entity-find-behavior
+                                                               (behavior-entity circle-collider)
+                                                               'rigidbody)))
+                                            (rigidbody-position rigidbody)
+                                            (transform-position (behavior-entity circle-collider)))
                                           (circle-radius circle-collider)
                                           point)
              (return circle-collider))))
@@ -63,6 +75,29 @@
      (with-behaviors ((((circle2-position position)) (circle2-transform transform))) *entity*
        (circle-collision-p circle1-position (circle-radius circle1-collider)
                            circle2-position (circle-radius *behavior*))))))
+
+(defbehavior rigidbody
+    ((colliders :init (list))
+     (mass :init 1.0
+           :networked t)
+     (bounciness :init 0.0)
+     (drag :init 0.0)
+     (static-friction :init 0.1)
+     (dynamic-friction :init 1.0)
+     (velocity :init (vec2)
+               :networked :lag-compensation)
+     (position :init (vec2)
+               :networked :lag-compensation))
+  (:networked t)
+  (:required-behaviors
+   transform)
+  (:start
+   (when-let ((collider (entity-find-behavior *entity* 'circle-collider)))
+     (setf (rigidbody-colliders)
+           (list collider)))
+   (setf (rigidbody-position) (transform-position)))
+  (:rigidbody-velocity+ (force)
+   (setf (rigidbody-velocity) (nv+ (rigidbody-velocity) force))))
 
 (defun inverse-mass (mass)
   (if (= mass 0.0)
@@ -98,7 +133,8 @@
                         ;; Make sure the collision check doesn't run on a collider on current entity
                            (remove-if-not
                             (lambda (behavior)
-                              (not (eql (behavior-entity behavior) *entity*)))
+                              (and (not (eql (behavior-entity behavior) *entity*))
+                                   (entity-find-behavior (behavior-entity behavior) 'rigidbody)))
                             (behaviors-of-type 'circle-collider))
                         ;; TODO: Add etypecase for other colliders
                         do (let* ((offset (v- (rigidbody-position (behavior-entity foreign-collider))
@@ -123,6 +159,8 @@
                                  (unless (= 0 (+ this-mass foreign-mass))
                                    (let* ((this-inverse-mass (inverse-mass this-mass))
                                           (this-bounciness (rigidbody-bounciness))
+                                          (this-static-friction (rigidbody-static-friction))
+                                          (this-dynamic-friction (rigidbody-dynamic-friction))
                                           (foreign-bounciness (if foreign-rigidbody
                                                                   (rigidbody-bounciness foreign-rigidbody)
                                                                   0.0))
@@ -130,8 +168,12 @@
                                           (foreign-velocity (if foreign-rigidbody
                                                                 (rigidbody-velocity foreign-rigidbody)
                                                                 (vec2)))
-                                          (static-friction 0.1)
-                                          (dynamic-friction 1.0)
+                                          (foreign-static-friction (if foreign-rigidbody
+                                                                       (rigidbody-static-friction foreign-rigidbody)
+                                                                       0.0))
+                                          (foreign-dynamic-friction (if foreign-rigidbody
+                                                                        (rigidbody-dynamic-friction foreign-rigidbody)
+                                                                        0.0))
                                           (relative-velocity (v- foreign-velocity
                                                                  (rigidbody-velocity)))
                                           (velocity-along-normal (v. relative-velocity
@@ -177,11 +219,11 @@
                                               (tangent-magnitude (/ (- (v. relative-velocity tangent))
                                                                     (+ this-inverse-mass
                                                                        foreign-inverse-mass)))
-                                              (mu (sqrt (+ (expt static-friction 2) (expt static-friction 2))))
+                                              (mu (sqrt (+ (expt this-static-friction 2) (expt foreign-static-friction 2))))
                                               (friction-impulse (if (< (abs tangent-magnitude) (* normal-impulse mu))
                                                                     (v* tangent tangent-magnitude)
-                                                                    (let ((dynamic-friction (sqrt (+ (expt dynamic-friction 2)
-                                                                                                     (expt dynamic-friction 2)))))
+                                                                    (let ((dynamic-friction (sqrt (+ (expt this-dynamic-friction 2)
+                                                                                                     (expt foreign-dynamic-friction 2)))))
                                                                       (v* tangent (- (min (* normal-impulse dynamic-friction)
                                                                                           (abs tangent-magnitude))))))))
                                          ;; Friction impulse resolution
@@ -192,24 +234,3 @@
                                            (setf (rigidbody-velocity foreign-rigidbody)
                                                  (v+ (rigidbody-velocity foreign-rigidbody)
                                                      (v* friction-impulse foreign-inverse-mass))))))))))))))))))
-
-(defbehavior rigidbody
-    ((colliders :init (list))
-     (mass :init 1.0
-           :networked t)
-     (bounciness :init 0.0)
-     (drag :init 0.0)
-     (velocity :init (vec2)
-               :networked :lag-compensation)
-     (position :init (vec2)
-               :networked :lag-compensation))
-  (:networked t)
-  (:required-behaviors
-   transform)
-  (:start
-   (when-let ((collider (entity-find-behavior *entity* 'circle-collider)))
-     (setf (rigidbody-colliders)
-           (list collider)))
-   (setf (rigidbody-position) (transform-position)))
-  (:rigidbody-velocity+ (force)
-   (setf (rigidbody-velocity) (nv+ (rigidbody-velocity) force))))
