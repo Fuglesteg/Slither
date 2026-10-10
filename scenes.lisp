@@ -52,8 +52,9 @@
 
 (defun add-entity (&rest entities)
   (dolist (entity entities)
-    (push entity (scene-entities *scene*))
-    (start entity)))
+    (when entity
+      (push entity (scene-entities *scene*))
+      (start entity))))
 
 (defun spawn-entity (name &rest initargs)
   (let ((entity (apply #'make-instance name initargs)))

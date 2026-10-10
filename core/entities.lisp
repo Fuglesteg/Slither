@@ -24,13 +24,13 @@
 (defmethod initialize-instance :after ((entity entity)
                                        &key (behavior-options nil) (behaviors nil behaviors-supplied-p)
                                        &allow-other-keys)
-  (cond
-    ((not behaviors-supplied-p)
-     (entity-initialize-behaviors entity behavior-options))
-    (t
-     (dolist (behavior behaviors)
-       (setf (behavior-entity behavior) entity))))
-  (let ((*entity* entity))
+  (with-entity entity
+    (cond
+      ((not behaviors-supplied-p)
+       (entity-initialize-behaviors entity behavior-options))
+      (t
+       (dolist (behavior behaviors)
+         (setf (behavior-entity behavior) entity))))
     (entity-create entity)))
 
 (defgeneric pre-tick (entity)
