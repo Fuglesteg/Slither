@@ -427,7 +427,7 @@
   :shader-program color-shader-program
   :vao quad-vertex-array
   :draw ((position size &key (color (vec4 1.0)) (anchor :center))
-         (let* ((position (position-apply-anchor position size anchor))
+         (let* ((position (position-apply-anchor position :size size :anchor anchor))
                 (model-matrix (nm* (mtranslation position)
                                    (mscaling size))))
            (draw :color color
@@ -456,7 +456,10 @@
   :shader-program texture-shader-program
   :vao texture-vertex-array
   :draw ((position size &key (maintain-ratio t) (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-scale (vec2 1.0)))
-         (let* ((position (position-apply-anchor position size anchor))
+         (let* ((position (position-apply-anchor position
+                                                 :size size
+                                                 :anchor anchor
+                                                 :rotation rotation))
                 (size (if maintain-ratio
                           (let* ((width (texture-width texture))
                                  (height (texture-height texture))
@@ -479,7 +482,10 @@
   :shader-program array-texture-shader-program
   :vao texture-vertex-array
   :draw ((position size &key (color (vec4 1.0)) (rotation 0) (anchor :center) (texture-index 0))
-         (let* ((position (position-apply-anchor position size anchor))
+         (let* ((position (position-apply-anchor position
+                                                 :size size
+                                                 :anchor anchor
+                                                 :rotation rotation))
                 (model-matrix (nm* (mtranslation position)
                                    (m3rotate rotation)
                                    (mscaling size))))
@@ -497,14 +503,19 @@
   :draw ((position size &key
                    (color (vec4 1.0))
                    (anchor :center)
+                   (rotation 0.0)
                    (border-radius (vec4)))
-         (let* ((position (position-apply-anchor position size anchor))
+         (let* ((position (position-apply-anchor position
+                                                 :size size
+                                                 :anchor anchor
+                                                 :rotation rotation))
                 (model-matrix (nm* (mtranslation position)
                                    (mscaling size))))
-           (draw :model-matrix model-matrix
-                 :color color
-                 :border-radius border-radius
-                 :rectangle-size (vunit size)))))
+           (unless (= 0 (vlength size))
+             (draw :model-matrix model-matrix
+                   :color color
+                   :border-radius border-radius
+                   :rectangle-size (vunit size))))))
 
 (defconstant +bezier-epsilon+ 1e-8)
 

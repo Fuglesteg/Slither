@@ -126,7 +126,7 @@
      (continue () :report "Continue")))
 
 (defun degrees->radians (degrees)
-  (* degrees (/ pi 180)))
+  (float (* degrees (/ pi 180)) 0.0))
 
 (defun rotation->vec2 (degrees)
   (let ((radians (degrees->radians degrees)))
@@ -187,28 +187,25 @@
   '(member :center :top :right :left :bottom
     :top-left :top-right :bottom-left :bottom-right))
 
-(-> position-apply-anchor (vec2 vec2 anchor) vec2)
-(defun position-apply-anchor (position size anchor)
-  (ecase anchor
-    (:center position)
-    (:top (v- position (vec2 0
-                             (vy size))))
-    (:right (v- position (vec2 (vx size)
-                               0)))
-    (:left (v+ position (vec2 (vx size)
-                              0)))
-    (:bottom (v+ position (vec2 0
-                                (vy size))))
-    (:top-left (v+ position (vec2 (vx size)
-                                  (- (vy size)))))
-    (:top-right (v- position (vec2 (vx size)
-                                   (vy size))))
-    (:bottom-left (v+ position (vec2 (vx size)
-                                     (vy size))))
-    (:bottom-right (v+ position (vec2 (- (vx size))
-                                      (vy size))))))
+(-> position-apply-anchor (vec2 &key (:size vec2) (:anchor anchor) (:rotation number)) vec2)
+(defun position-apply-anchor (position &key size anchor (rotation 0.0))
+  (let ((offset
+          (ecase anchor
+            (:center (vec2 0 0))
+            (:top (vec2 0 (vy size)))
+            (:bottom (vec2 0 (- (vy size))))
+            (:left (vec2 (- (vx size)) 0))
+            (:right (vec2 (vx size) 0))
+            (:top-left (vec2 (- (vx size)) (vy size)))
+            (:top-right (vec2 (vx size) (vy size)))
+            (:bottom-left (vec2 (- (vx size)) (- (vy size))))
+            (:bottom-right (vec2 (vx size) (- (vy size)))))))
+    (v- position
+        (vrot2 offset (degrees->radians rotation)))))
 
 (defmacro in-main-thread (&body body)
-  `(sb-thread:interrupt-thread (sb-thread:main-thread)
-                               (lambda ()
-                                 ,@body)))
+  `(if (sb-thread:main-thread-p)
+       (progn ,@body)
+       (sb-thread:interrupt-thread (sb-thread:main-thread)
+                                   (lambda ()
+                                     ,@body))))
