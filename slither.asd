@@ -3,6 +3,10 @@
   :maintainer "Andreas Fuglesteg Dale <andreasfdale@gmail.com>"
   :license "GPL3"
   :version "0.0.2"
+  :around-compile (lambda (next)
+                    #+dev (proclaim '(optimize (debug 3) (safety 3) (speed 1)))
+                    #-dev (proclaim '(optimize (debug 0) (safety 0) (speed 3)))
+                    (funcall next))
   :depends-on (#:cl-opengl
                #:3d-math
                #:sb-bsd-sockets
