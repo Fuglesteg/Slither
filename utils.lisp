@@ -57,7 +57,8 @@
    :anchor
    :position-apply-anchor
    :radians->degrees
-   :in-main-thread))
+   :in-main-thread
+   :vtan))
 
 (in-package #:slither/utils)
 
@@ -209,3 +210,9 @@
        (sb-thread:interrupt-thread (sb-thread:main-thread)
                                    (lambda ()
                                      ,@body))))
+
+(-> vtan (vec2) vec2)
+(defun vtan (v)
+  "Return the tangent vector to v"
+  (vec2 (- (vy v))
+        (vx v)))
