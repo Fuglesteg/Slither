@@ -21,6 +21,10 @@
     :reader texture-asset
     :initform nil
     :initarg :asset)
+   (repeat
+    :reader texture-repeat
+    :initform nil
+    :initarg :repeat)
    (width
     :accessor texture-width
     :initform 0
@@ -40,8 +44,13 @@
     (gl:bind-texture :texture-2d id)
     (gl:tex-parameter :texture-2d :texture-min-filter :linear-mipmap-linear)
     (gl:tex-parameter :texture-2d :texture-mag-filter :linear)
-    (gl:tex-parameter :texture-2d :texture-wrap-s :clamp-to-edge)
-    (gl:tex-parameter :texture-2d :texture-wrap-t :clamp-to-edge)
+    (cond
+      ((texture-repeat texture)
+       (gl:tex-parameter :texture-2d :texture-wrap-s :repeat)
+       (gl:tex-parameter :texture-2d :texture-wrap-t :repeat))
+      (t
+       (gl:tex-parameter :texture-2d :texture-wrap-s :clamp-to-edge)
+       (gl:tex-parameter :texture-2d :texture-wrap-t :clamp-to-edge)))
     (static-vectors:with-static-vector (image-data (length (pngload:data png))
                                                    :initial-contents (pngload:data png))
       (gl:tex-image-2d :texture-2d 0 :rgba

@@ -137,9 +137,9 @@
        (delay-evaluation
          (setf ,name (progn ,@body)))))
 
-  (defmacro define-texture (name file)
+  (defmacro define-texture (name file &key (repeat nil))
     `(progn
-       (defvar ,name (make-instance 'texture))
+       (defvar ,name (make-instance 'texture :repeat ,repeat))
        (defasset ,name ,file :png)
        (delay-evaluation
          (setf (texture-asset ,name) ',name))))
