@@ -58,7 +58,8 @@
    :position-apply-anchor
    :radians->degrees
    :in-main-thread
-   :vtan))
+   :vtan
+   :angle-clamp))
 
 (in-package #:slither/utils)
 
@@ -216,3 +217,34 @@
   "Return the tangent vector to v"
   (vec2 (- (vy v))
         (vx v)))
+
+(defun angle-clamp (angle min max)
+  (flet ((clamp-axis (angle)
+           (mod angle 360))
+         (normalize-axis (angle)
+           (let ((angle (mod angle 360)))
+             (if (< 180 angle)
+                 (- angle 360)
+                 angle))))
+    (let* ((max-delta (* (clamp-axis (- max min)) 0.5))
+           (range-center (clamp-axis (+ min max-delta)))
+           (delta-from-center (normalize-axis (- angle range-center))))
+      (cond
+        ((> delta-from-center max-delta)
+         (normalize-axis (+ range-center max-delta)))
+        ((< delta-from-center (- max-delta))
+         (normalize-axis (- range-center max-delta)))
+        (t angle)))))
+
+(defun angle-in-range-p (angle min max)
+  (flet ((clamp-axis (angle)
+           (mod angle 360))
+         (normalize-axis (angle)
+           (let ((angle (mod angle 360)))
+             (if (< 180 angle)
+                 (- angle 360)
+                 angle))))
+    (let* ((max-delta (* (clamp-axis (- max min)) 0.5))
+           (range-center (clamp-axis (+ min max-delta)))
+           (delta-from-center (normalize-axis (- angle range-center))))
+      (< (- max-delta) delta-from-center max-delta))))
