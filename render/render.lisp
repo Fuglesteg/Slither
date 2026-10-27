@@ -77,7 +77,8 @@
            :ui-rounded-rectangle-shader-program
            :rounded-rectangle-shader-program
            :world-space->ui
-           :ui-quadratic-bezier-shader-program))
+           :ui-quadratic-bezier-shader-program
+           :world-mouse-position))
 
 (in-package #:slither/render)
 
@@ -351,6 +352,9 @@
          1e-6)
       vector
       (m* (minv *view-matrix*) vector)))
+
+(defun world-mouse-position ()
+  (screen-space-world-position (slither/input:screen-space-mouse-position)))
 
 (defun screen-space-position (vector)
   (if (< (abs (mdet *view-matrix*))

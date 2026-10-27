@@ -17,7 +17,6 @@
            :key-press
            :key-release
            :set-mouse-position
-           :normalized-screen-space-mouse-position
            :key-pressed-p
            :key-released-p
            :set-input-table
@@ -38,7 +37,9 @@
            :copy-inputs
            :vector-value
            :inputs-disable
-           :inputs-enable))
+           :inputs-enable
+           :pixel-mouse-position
+           :screen-space-mouse-position))
 
 (in-package #:slither/input)
 
@@ -109,10 +110,13 @@
 (defun mouse-position ()
   *mouse-position*)
 
+(defun pixel-mouse-position ()
+  *mouse-position*)
+
 (defun normalized-mouse-position ()
   (v/ *mouse-position* (vec2 *window-width* *window-height*)))
 
-(defun normalized-screen-space-mouse-position ()
+(defun screen-space-mouse-position ()
   (v* (v- (normalized-mouse-position) 0.5) (vec2 1 -1) 2))
 
 (defclass button-input ()

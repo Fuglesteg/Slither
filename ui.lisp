@@ -823,8 +823,7 @@
 
 (defun ui-mouse-position ()
   (handler-case
-      (v* (m* (minv slither/render::*ui-view-matrix*)
-              (normalized-screen-space-mouse-position))
+      (v* (pixel-mouse-position)
           (vec2 1.0 -1.0))
     (error () (vec2))))
 
