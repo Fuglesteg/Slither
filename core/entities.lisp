@@ -286,7 +286,16 @@
                          (push
                           (let ((entity-symbol (gensym)))
                             `(defmethod fixed-tick ((,entity-symbol ,name))
-                               ,@arguments))
+			       ,@(let ((behaviors-with-wrappers (remove-if-not #'behavior-symbol-should-wrap-fixed-tick-p
+									       behavior-symbols)))
+				 (if behaviors-with-wrappers
+				     (let ((funcall-expression `(lambda () ,@arguments)))
+				       (dolist (wrapping-behavior behaviors-with-wrappers)
+					 (setf funcall-expression `(funcall #'behavior-wrap-fixed-tick
+									    (entity-find-behavior *entity* ',wrapping-behavior)
+									    ,funcall-expression)))
+				       `(,funcall-expression))
+				     arguments))))
                           methods))
                         ((string= keyword :pre-fixed-tick)
                          (push

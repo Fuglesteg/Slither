@@ -125,6 +125,16 @@
 (defgeneric behavior-decode (behavior-symbol behavior-vector entity))
 (defgeneric behavior-decode-full (behavior-symbol behavior-vector entity))
 
+(-> behavior-wrap-fixed-tick (behavior function) t)
+(defgeneric behavior-wrap-fixed-tick (behavior next)
+  (:method ((behavior-symbol t) (next t))
+    nil))
+
+(-> behavior-symbol-wrap-fixed-tick-p (symbol) boolean)
+(defgeneric behavior-symbol-should-wrap-fixed-tick-p (behavior-symbol)
+  (:method ((behavior-symbol symbol))
+    nil))
+
 (defmacro defbehavior (name slots &body sections)
   (let (methods
         clos-slots
@@ -164,78 +174,88 @@
     (setf clos-slots (nreverse clos-slots))
     (loop for (keyword-or-symbol . arguments) in sections
           collect
-             (cond
-               ((string= keyword-or-symbol :tick)
-                (push
-                 `(defmethod tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :pre-tick)
-                (push
-                 `(defmethod pre-tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :post-tick)
-                (push
-                 `(defmethod post-tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :fixed-tick)
-                (push
-                 `(defmethod fixed-tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :pre-fixed-tick)
-                (push
-                 `(defmethod pre-fixed-tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :post-fixed-tick)
-                (push
-                 `(defmethod post-fixed-tick ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :pre-start)
-                (push
-                 `(defmethod pre-start ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :post-start)
-                (push
-                 `(defmethod post-start ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :start)
-                (push
-                 `(defmethod start ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :destroy)
-                (push
-                 `(defmethod behavior-destroy ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :create)
-                (push
-                 `(defmethod behavior-create ((,(gensym) ,name))
-                    ,@arguments)
-                 methods))
-               ((string= keyword-or-symbol :required-behaviors)
-                (push
-                 `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
-                    (quote ,arguments))
-                 methods))
-               ((string= keyword-or-symbol :networked)
-                (when (first arguments)
-                  (push
-                   `(defmethod behavior-networked-p ((behavior (eql ',name)))
-                      t)
-                   methods)))
-               (t (destructuring-bind (method-arguments . body) arguments
-                    (push
-                     `(define-behavior-method ,name ,(ensure-non-keyword-symbol keyword-or-symbol) ,method-arguments
-                        ,@body)
-                     methods)))))
+          (cond
+            ((string= keyword-or-symbol :tick)
+             (push
+              `(defmethod tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :pre-tick)
+             (push
+              `(defmethod pre-tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :post-tick)
+             (push
+              `(defmethod post-tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+	    ((string= keyword-or-symbol :fixed-tick)
+             (push
+              `(defmethod fixed-tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+	    ((string= keyword-or-symbol :around-fixed-tick)
+	     (destructuring-bind ((next) . body) arguments
+	       (push
+		`(defmethod behavior-wrap-fixed-tick ((,(gensym) ,name) ,next)
+		   ,@body)
+		methods))
+	     (push
+              `(defmethod behavior-symbol-should-wrap-fixed-tick-p ((,(gensym) (eql ',name)))
+                 t)
+              methods))
+            ((string= keyword-or-symbol :pre-fixed-tick)
+             (push
+              `(defmethod pre-fixed-tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :post-fixed-tick)
+             (push
+              `(defmethod post-fixed-tick ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+	    ((string= keyword-or-symbol :pre-start)
+             (push
+              `(defmethod pre-start ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :post-start)
+             (push
+              `(defmethod post-start ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :start)
+             (push
+              `(defmethod start ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :destroy)
+             (push
+              `(defmethod behavior-destroy ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :create)
+             (push
+              `(defmethod behavior-create ((,(gensym) ,name))
+                 ,@arguments)
+              methods))
+            ((string= keyword-or-symbol :required-behaviors)
+             (push
+              `(defmethod behavior-required-behaviors ((behavior (eql ',name)))
+                 (quote ,arguments))
+              methods))
+            ((string= keyword-or-symbol :networked)
+             (when (first arguments)
+               (push
+                `(defmethod behavior-networked-p ((behavior (eql ',name)))
+                   t)
+                methods)))
+            (t (destructuring-bind (method-arguments . body) arguments
+                 (push
+                  `(define-behavior-method ,name ,(ensure-non-keyword-symbol keyword-or-symbol) ,method-arguments
+                     ,@body)
+                  methods)))))
     `(progn
        (defclass ,name (behavior) ,clos-slots)
        ,@(loop for slot-symbol in slot-symbols
@@ -256,8 +276,8 @@
                                                      :element-type '(unsigned-byte 8))
                          (:write-integer behavior-write-integer
                           :write-sequence behavior-write-sequence)
-                      (behavior-write-integer (length behavior-data) :bytes 2)
-                      (behavior-write-sequence behavior-data))))
+                       (behavior-write-integer (length behavior-data) :bytes 2)
+                       (behavior-write-sequence behavior-data))))
                 (behavior-decoder (slots)
                   `(let ((arguments (decode-arguments behavior-vector)))
                      (declare (ignorable arguments))
