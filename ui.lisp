@@ -822,10 +822,7 @@
      ui-element))
 
 (defun ui-mouse-position ()
-  (handler-case
-      (v* (pixel-mouse-position)
-          (vec2 1.0 -1.0))
-    (error () (vec2))))
+  (pixel-mouse-position))
 
 (-> mouse-hover-p (vec2 vec2) boolean)
 (defun mouse-hover-p (position size)
