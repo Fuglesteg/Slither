@@ -24,6 +24,7 @@
            :decode-inputs
            :mouse-scroll-x
            :mouse-scroll-y
+	   :input
            :definput
            :define-vector-input
            :input-released-p
@@ -39,7 +40,13 @@
            :inputs-disable
            :inputs-enable
            :pixel-mouse-position
-           :screen-space-mouse-position))
+           :screen-space-mouse-position
+	   :input-source
+	   :entity-input-source
+	   :entity-bind-input-source
+	   :entity-unbind-input-source
+	   :entity-transfer-input-source
+	   :controllable))
 
 (in-package #:slither/input)
 
@@ -175,8 +182,47 @@
           finally (setf (gethash i *code-input-table*) symbol)
                   (setf (gethash symbol *input-code-table*) i))))
 
-(defvar *inputs* (make-hash-table :test 'eq
-                                  :size 32))
+(defun make-input-source ()
+  (let ((input-source (make-hash-table :test 'eq
+				       :size 32)))
+    (do-hash-table (symbol code *input-code-table*)
+      (let ((is-button (> 32 code)))
+	(setf (gethash symbol input-source)
+	      (if is-button
+		  (make-instance 'button-input)
+		  (make-instance 'vector-input)))))
+    input-source))
+
+(defvar *inputs* (make-input-source))
+
+(defvar *input-sources* (let ((input-sources (make-hash-table :test 'eq)))
+			  (setf (gethash :player1 input-sources)
+				*inputs*)
+			  input-sources))
+
+(defun input-source (name)
+  (gethash name *input-sources*))
+
+(defvar *entity-input-source* (make-hash-table :test 'eq))
+
+(-> entity-input-source (entity) hash-table)
+(let ((empty-inputs nil))
+  (defun entity-input-source (entity)
+    (or (values (gethash entity *entity-input-source*))
+	(if (null empty-inputs)
+	    (setf empty-inputs (make-input-source))
+	    empty-inputs))))
+
+(defun entity-bind-input-source (entity input-source)
+  (setf (gethash entity *entity-input-source*)
+	input-source))
+
+(defun entity-unbind-input-source (&optional (entity *entity*))
+  (entity-bind-input-source entity nil))
+
+(defun entity-transfer-input-source (entity-from entity-to)
+  (entity-bind-input-source entity-to (entity-input-source entity-from))
+  (entity-bind-input-source entity-from nil))
 
 (defun input (input-symbol)
   (gethash input-symbol *inputs*))
@@ -341,14 +387,21 @@ Also resets scroll. Should be called after entity updates"
              (vector-input (when-let ((analogue (assoc-value analogues input-name)))
                              (setf (vector-input-value input) (vcopy analogue)))))))
 
+(defun copy-input (input &key (preserve-value t))
+  (etypecase input
+    (button-input (make-instance 'button-input :value (if preserve-value
+							  (button-input-value input)
+							  nil)))
+    (vector-input (make-instance 'vector-input :value (if preserve-value
+							  (vcopy (vector-input-value input))
+							  (vec2))))))
+
 (defun copy-inputs (inputs)
   (let ((copy (make-hash-table :test 'eq
                                :size 32)))
     (do-hash-table (input-name input inputs)
       (setf (gethash input-name copy)
-            (etypecase input
-              (button-input (make-instance 'button-input :value (button-input-value input)))
-              (vector-input (make-instance 'vector-input :value (vcopy (vector-input-value input)))))))
+            (copy-input input)))
     copy))
 
 (defvar *input-history*
@@ -404,3 +457,11 @@ Also resets scroll. Should be called after entity updates"
             (vector-input (let ((old (vcopy (vector-input-value input))))
                             (when historic-value
                               (setf (vector-input-value input) (vcopy historic-value)))))))))))
+
+(defbehavior controllable
+    ((input-source :init nil))
+  (:start
+   (entity-bind-input-source *entity* (input-source (controllable-input-source))))
+  (:around-fixed-tick (next)
+     (let ((*inputs* (entity-input-source *entity*)))
+       (funcall next))))
