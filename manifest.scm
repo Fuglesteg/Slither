@@ -11,6 +11,7 @@
                                     (map cadr
                                          (package-development-inputs slither)))
                             (list sbcl-micros
+				  sbcl-slime-swank
                                   alsa-lib
                                   libmixed
                                   sbcl)))
