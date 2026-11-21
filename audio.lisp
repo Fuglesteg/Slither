@@ -1,16 +1,22 @@
 (uiop:define-package #:slither/audio
   (:use #:cl
-        #:org.shirakumo.fraf.math.vectors)
+        #:org.shirakumo.fraf.math.vectors
+	#:slither/render
+	#:slither/utils)
   (:local-nicknames (:harmony :org.shirakumo.fraf.harmony)
-                    (:mixed :org.shirakumo.fraf.mixed))
+                    (:mixed :org.shirakumo.fraf.mixed)
+		    (:vorbis :org.shirakumo.fraf.vorbis))
   (:import-from #:slither/assets
                 #:defasset
                 #:register-asset)
   (:export #:sound-play
-           #:sound-stop
-           #:audio-init
+	   #:audio-init
            #:defsound
-           #:listener-position))
+           #:listener-position
+	   #:sound-make-voice
+	   #:voice-stop
+	   #:voice-location
+	   #:voice-volume))
 
 (in-package #:slither/audio)
 
@@ -18,9 +24,12 @@
 (defvar *run-on-init* nil)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro defsound (name path)
+  (defmacro defsound (name path &key (repeat nil)
+				  (repeat-start 0.0))
     `(progn
-       (defvar ,name (make-instance 'sound))
+       (defvar ,name (make-instance 'sound
+				    :repeat ,repeat
+				    :repeat-start ,repeat-start))
        (let ((function
                (lambda ()
                  (register-asset ',name ,path :sound)
@@ -34,24 +43,40 @@
   ((asset
     :initarg :asset
     :initform nil
-    :reader sound-asset)
-   (voice
-    :initarg :voice
+    :accessor sound-asset)
+   (repeat
+    :initarg :repeat
     :initform nil
-    :accessor sound-voice)))
+    :type boolean
+    :accessor sound-repeat)
+   (repeat-start
+    :initarg :repeat-start
+    :initform 0.0
+    :type single-float
+    :accessor sound-repeat-start)))
 
-(defmethod (setf sound-asset) (new-asset (sound sound))
-  (setf (slot-value sound 'asset) new-asset)
-  (setf (sound-voice sound)
-        (harmony:create (slither/assets:asset-data new-asset))))
+(defun vorbis-file->source (file-path)
+  (let* ((file (vorbis:open file-path))
+	 (pcm-data-buffer (mixed:make-buffer (vorbis:sample-count file))))
+    (vorbis:decode-frame file (list (mixed:data pcm-data-buffer)))
+    (let ((pcm-vector-source (make-instance 'mixed:pcm-vector-source)))
+      (setf (mixed:data-buffer pcm-vector-source)
+	    pcm-data-buffer)
+      pcm-vector-source)))
 
 (defun audio-init ()
   (unless *initialized*
     (mixed:init)
-    (harmony:maybe-start-simple-server
-     :mixers (list
-              :music
-              (list :effect 'mixed:plane-mixer)))
+    (vorbis:init)
+    (sb-int:with-float-traps-masked (:divide-by-zero :overflow)
+      (harmony:maybe-start-simple-server
+       :effects '((mixed:biquad-filter :filter :lowpass :name :lowpass))
+       ;; (list (list 'mixed:compressor
+       ;; 	    :threshold 48))
+       :mixers '((:music)
+		 (:effect mixed:plane-mixer :min-distance 10 :max-distance 100))))
+    (setf (mixed:volume :effect) 0.3)
+    (setf (mixed:volume :master) 0.5)
     (loop for function in *run-on-init*
           do (funcall function))
     (setf *initialized* t)
@@ -65,24 +90,68 @@
 (defun (setf listener-position) (new-position)
   (setf *listener-position* new-position))
 
-(defmethod sound-play ((sound sound) &key (position (vec2)) (velocity (vec2)))
-  (sound-play (sound-voice sound)
-              :position position
-              :velocity velocity))
+(defun sound-make-voice (sound &key (volume 1.0)
+				 (on-end :disconnect))
+  (let* ((voice (harmony:create (slither/assets::asset-data (sound-asset sound))
+				:volume volume
+				:on-end on-end))
+	 (source (harmony:source voice)))
+    (setf (harmony:repeat source)
+	  (sound-repeat sound))
+    (setf (harmony:repeat-start source)
+	  (sound-repeat-start sound))
+    voice))
 
-(defmethod sound-play ((sound harmony:voice) &key (position (vec2)) (velocity (vec2)))
+(defmethod sound-play ((sound sound) &key (position (vec2))
+				       (velocity (vec2))
+				       (volume 1.0))
+  (let ((voice (sound-make-voice sound
+				 :volume volume
+				 :on-end :free)))
+    (sound-play voice
+		:volume volume
+		:position position
+		:velocity velocity)))
+
+(defmethod sound-play ((sound harmony:voice) &key (position (vec2))
+					       (velocity (vec2))
+					       (volume 1.0))
   (harmony:play sound
                 :reset t
-                :location (with-vec (x y) (v- (v* position -1) (listener-position))
-                            (list x y))
-                :velocity (list (vx velocity)
-                                (vy velocity))))
+		:volume volume
+                :location (varr (position->location position))
+                :velocity (varr velocity))
+  sound)
 
-(defmethod sound-stop ((sound sound))
-  (sound-stop (sound-voice sound)))
+(defun voice-stop (voice)
+  (harmony:stop voice))
 
-(defmethod sound-stop ((sound harmony:voice))
-  (harmony:stop sound))
+(defun position->location (position)
+  "Takes a world position and converts it to audio coordinates"
+  (let ((offset (v- position (listener-position))))
+    (v* (rotation->vec2
+	 (screen-space-rotate
+	  (vec2->rotation offset)))
+	(vlength offset))))
+
+(-> voice-location (harmony:voice))
+(defun voice-location (voice)
+  (mixed:location voice))
+
+(-> (setf voice-location) (vec2 harmony:voice))
+(defun (setf voice-location) (new-value voice)
+  (ignore-errors ; Don't understand why I'm getting an error from harmony here
+   (setf (mixed:location voice)
+	 (varr (position->location new-value)))))
+
+(-> voice-volume (harmony:voice) single-float)
+(defun voice-volume (voice)
+  (mixed:volume voice))
+
+(-> (setf voice-volume) (single-float harmony:voice))
+(defun (setf voice-volume) (new-value voice)
+  (setf (mixed:volume voice)
+	new-value))
 
 #|
 

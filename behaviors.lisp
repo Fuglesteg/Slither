@@ -6,17 +6,15 @@
         #:slither/core
         #:slither/render
         #:slither/networking
+	#:slither/audio
         #:slither/networking/networked)
   (:import-from #:slither/input
                 #:key-held-p)
-  (:import-from #:slither/audio
-                #:sound-play
-                #:sound-stop
-                #:listener-position)
   (:export #:speaker-play
            #:speaker-stop
            #:listener
            #:speaker
+	   #:speaker-volume
            #:camera
            #:rectangle
            #:directional-move
@@ -194,16 +192,31 @@
        (setf position (transform-position target))))))
 
 (defbehavior speaker
-    (sound)
-  (:speaker-play ()
+    ((sound-voice :init (make-hash-table :test 'eq))
+     (volume :init 1.0))
+  (:speaker-play (sound)
    (unless (slither/networking:serverp)
-     (sound-play (speaker-sound)
-                 :position (transform-position))))
-  (:speaker-stop ()
-   (unless (slither/networking:serverp)
-     (sound-stop (speaker-sound)))))
+     (let ((voice (or (gethash sound (speaker-sound-voice))
+		      (let ((voice (sound-make-voice sound)))
+			(setf (gethash sound (speaker-sound-voice))
+			      voice)
+			voice))))
+       (sound-play voice
+		   :position (transform-position)))))
+  (:speaker-stop (sound)
+		 (unless (slither/networking:serverp)
+		   (when-let ((voice (gethash sound (speaker-sound-voice))))
+		     (voice-stop voice))))
+  (:fixed-tick
+   (do-hash-table (sound voice (speaker-sound-voice))
+     (declare (ignorable sound))
+     (when (typep voice 'org.shirakumo.fraf.harmony:voice)
+       (setf (voice-volume voice)
+	     (speaker-volume))
+       (setf (voice-location voice)
+	     (transform-position))))))
 
 (defbehavior listener
     ()
-  (:tick
+  (:fixed-tick
    (setf (listener-position) (transform-position))))

@@ -32,8 +32,7 @@
                  (:file "systems")
                  (:file "game-loop")))
                (:file "assets")
-               (:file "audio")
-               (:file "window")
+	       (:file "window")
                (:file "input")
                (:module "render"
                 :serial t
@@ -45,6 +44,7 @@
                  (:file "shader-program")
                  (:file "vertex")
                  (:file "render")))
+	       (:file "audio")
                (:file "ui")
                (:file "scenes")
                (:module "networking"
