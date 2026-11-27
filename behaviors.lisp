@@ -214,7 +214,13 @@
        (setf (voice-volume voice)
 	     (speaker-volume))
        (setf (voice-location voice)
-	     (transform-position))))))
+	     (transform-position)))))
+  (:destroy
+   ;; (do-hash-table (sound voice (speaker-sound-voice))
+   ;; 		  (declare (ignorable sound))
+   ;; 		  (org.shirakumo.fraf.harmony:stop voice)
+   ;; 		  (org.shirakumo.fraf.mixed:free voice))
+   ))
 
 (defbehavior listener
     ()

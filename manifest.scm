@@ -12,6 +12,7 @@
                                          (package-development-inputs slither)))
                             (list sbcl-micros
 				  sbcl-slime-swank
+                                  sbcl-slynk
                                   alsa-lib
                                   libmixed
                                   sbcl)))

@@ -10,10 +10,12 @@
                 #:defasset
                 #:register-asset)
   (:export #:sound-play
+	   #:music-play
 	   #:audio-init
            #:defsound
            #:listener-position
 	   #:sound-make-voice
+	   #:sound-make-music-voice
 	   #:voice-stop
 	   #:voice-location
 	   #:voice-volume))
@@ -70,12 +72,16 @@
     (vorbis:init)
     (sb-int:with-float-traps-masked (:divide-by-zero :overflow)
       (harmony:maybe-start-simple-server
-       :effects '((mixed:biquad-filter :filter :lowpass :name :lowpass))
+       ;; :effects '((mixed:biquad-filter :filter :lowpass :name :lowpass))
        ;; (list (list 'mixed:compressor
        ;; 	    :threshold 48))
-       :mixers '((:music)
+       :samplerate 48000
+       :output-channels 2
+       :latency 0.04
+       :mixers '((:music mixed:basic-mixer :effects ((mixed:biquad-filter :filter :lowpass :name :music-lowpass)))
 		 (:effect mixed:plane-mixer :min-distance 10 :max-distance 100))))
-    (setf (mixed:volume :effect) 0.3)
+    (setf (mixed:volume :effect) 1.0)
+    (setf (mixed:volume :music) 0.5)
     (setf (mixed:volume :master) 0.5)
     (loop for function in *run-on-init*
           do (funcall function))
@@ -91,16 +97,44 @@
   (setf *listener-position* new-position))
 
 (defun sound-make-voice (sound &key (volume 1.0)
-				 (on-end :disconnect))
-  (let* ((voice (harmony:create (slither/assets::asset-data (sound-asset sound))
+				 (on-end :disconnect)
+				 (voice-class 'harmony:voice)
+				 (mixer :effect))
+  (let* ((voice (harmony:create (or (slither/assets::asset-data (sound-asset sound))
+				    (error "No asset data for sound ~a" (sound-asset sound)))
 				:volume volume
-				:on-end on-end))
+				; :channels 2
+				:on-end on-end
+				:class voice-class
+				:mixer mixer))
 	 (source (harmony:source voice)))
     (setf (harmony:repeat source)
 	  (sound-repeat sound))
     (setf (harmony:repeat-start source)
 	  (sound-repeat-start sound))
     voice))
+
+(defun sound-make-music-voice (sound &key (volume 1.0)
+			       (on-end :disconnect)
+			       (voice-class 'harmony:music-segment))
+  (sound-make-voice sound
+		    :volume volume
+		    :on-end on-end
+		    :voice-class voice-class
+		    :mixer :music))
+
+(defmethod music-play ((sound sound) &key (volume 1.0))
+	   (let ((voice (sound-make-voice sound
+					  :voice-class 'harmony:music-segment)))
+	     (harmony:play voice
+			   :mixer :music
+			   :volume volume)
+	     voice))
+
+(defmethod music-play ((sound harmony:voice) &key (volume 1.0))
+	   (harmony:play sound
+			 :mixer :music
+			 :volume volume))
 
 (defmethod sound-play ((sound sound) &key (position (vec2))
 				       (velocity (vec2))
